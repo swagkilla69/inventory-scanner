@@ -12,6 +12,7 @@
       max-width: 500px;
       margin: 24px auto;
       padding: 16px;
+      line-height: 1.4;
     }
     input, button {
       box-sizing: border-box;
@@ -22,15 +23,20 @@
     }
     button { cursor: pointer; }
     #status { white-space: pre-wrap; }
-    #results {
-      margin-top: 20px;
-      overflow-wrap: anywhere;
-    }
+    #results { margin-top: 20px; overflow-wrap: anywhere; }
     .batch {
       border: 1px solid #ccc;
       border-radius: 8px;
       padding: 12px;
       margin: 10px 0;
+    }
+    .selected-batch {
+      border: 3px solid #16803c;
+      background: #edf9f0;
+    }
+    .selected-label {
+      color: #12652e;
+      font-weight: bold;
     }
     .warning { color: #b00020; font-weight: bold; }
     .field { margin: 8px 0; }
@@ -40,8 +46,7 @@
   <h2>Inventory Scanner</h2>
 
   <label for="barcode">Enter barcode manually</label>
-  <input id="barcode" autocomplete="off"
-         placeholder="Scan or type barcode">
+  <input id="barcode" autocomplete="off" placeholder="Scan or type barcode">
 
   <button id="findButton" onclick="openItem()">Find Item</button>
   <button onclick="startScanner()">Open Camera Scanner</button>
@@ -69,12 +74,11 @@
         status.textContent = 'Enter or scan a barcode first.';
         return;
       }
-
       if (lookupInProgress) return;
 
       lookupInProgress = true;
       button.disabled = true;
-      status.textContent = 'Looking up item…';
+      status.textContent = 'Looking up barcode…';
       document.getElementById('results').replaceChildren();
 
       if (requestScript) requestScript.remove();
@@ -82,19 +86,16 @@
 
       requestTimeout = setTimeout(function() {
         finishLookup();
-        status.textContent =
-          'Lookup timed out. Check your connection and try again.';
+        status.textContent = 'Lookup timed out. Check your connection and try again.';
       }, 15000);
 
       requestScript = document.createElement('script');
       requestScript.src = INVENTORY_URL +
-        '?callback=inventoryCallback&barcode=' +
-        encodeURIComponent(barcode);
+        '?callback=inventoryCallback&barcode=' + encodeURIComponent(barcode);
 
       requestScript.onerror = function() {
         finishLookup();
-        status.textContent =
-          'Could not connect to inventory. Please try again.';
+        status.textContent = 'Could not connect to inventory. Please try again.';
       };
 
       document.body.appendChild(requestScript);
@@ -110,7 +111,6 @@
       }
     }
 
-    // Called by the Apps Script JSONP endpoint.
     window.inventoryCallback = function(result) {
       finishLookup();
 
@@ -119,20 +119,23 @@
       results.replaceChildren();
 
       if (!result || !result.success) {
-        status.textContent =
-          result && result.message ? result.message : 'Lookup failed.';
+        status.textContent = result && result.message
+          ? result.message : 'Lookup failed.';
         return;
       }
 
-      status.textContent = 'Item found.';
-      const item = result.item;
+      const isBatchScan = result.scannedType === 'batch';
+      status.textContent = isBatchScan
+        ? 'Batch barcode found. The scanned batch is highlighted below.'
+        : 'Item found.';
 
+      const item = result.item || {};
       addHeading(results, item.name || 'Unnamed item', 'h3');
       addField(results, 'Item ID', item.id);
-      addField(results, 'Barcode', item.barcode);
+      addField(results, 'Item barcode', item.barcode);
       addField(results, 'Category', item.category);
       addField(results, 'Manufacturer', item.manufacturer);
-      addField(results, 'On hand', item.onHand);
+      addField(results, 'On hand (total)', item.onHand);
       addField(results, 'Unit', item.unit);
       addField(results, 'Reorder level', item.reorderLevel);
       addField(results, 'Storage location', item.location);
@@ -147,11 +150,21 @@
         result.batches.forEach(function(batch) {
           const card = document.createElement('div');
           card.className = 'batch';
+
+          if (batch.selected === true) {
+            card.classList.add('selected-batch');
+            const label = document.createElement('p');
+            label.className = 'selected-label';
+            label.textContent = '✓ SCANNED BATCH';
+            card.appendChild(label);
+          }
+
           addHeading(card, 'Batch ' + (batch.id || ''), 'h4');
+          addField(card, 'Batch barcode', batch.barcode);
           addField(card, 'Lot number', batch.lot);
           addField(card, 'Date received', batch.received);
           addField(card, 'Expiration', batch.expiration);
-          addField(card, 'Quantity', batch.quantity);
+          addField(card, 'Quantity in this batch', batch.quantity);
           addField(card, 'Status', batch.status);
           addField(card, 'Notes', batch.notes);
           results.appendChild(card);
@@ -198,8 +211,11 @@
       const status = document.getElementById('status');
 
       if (typeof Html5Qrcode === 'undefined') {
-        status.textContent =
-          'Scanner library did not load. Refresh and try again.';
+        status.textContent = 'Scanner library did not load. Refresh and try again.';
+        return;
+      }
+      if (scanner) {
+        status.textContent = 'Camera scanner is already running.';
         return;
       }
 
@@ -211,6 +227,7 @@
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 250, height: 150 } },
           async function(decodedText) {
+            if (lookupInProgress) return;
             document.getElementById('barcode').value = decodedText;
             await stopScanner();
             openItem();
@@ -220,8 +237,7 @@
 
         status.textContent = 'Camera running. Point it at a barcode.';
       } catch (error) {
-        status.textContent =
-          'Camera could not start: ' +
+        status.textContent = 'Camera could not start: ' +
           (error.message || String(error));
         scanner = null;
       }
@@ -229,13 +245,18 @@
 
     async function stopScanner() {
       if (scanner) {
-        try {
-          if (scanner.isScanning) await scanner.stop();
-          scanner.clear();
-        } catch (error) {}
+        const currentScanner = scanner;
         scanner = null;
+        try {
+          if (currentScanner.isScanning) await currentScanner.stop();
+          currentScanner.clear();
+        } catch (error) {}
       }
     }
+
+    document.getElementById('barcode').addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') openItem();
+    });
   </script>
 </body>
 </html>
