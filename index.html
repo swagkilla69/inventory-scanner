@@ -1,0 +1,100 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventory Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 500px;
+      margin: 24px auto;
+      padding: 16px;
+    }
+    input, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      font-size: 16px;
+    }
+    button { cursor: pointer; }
+    #status { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>Inventory Scanner</h2>
+
+  <label for="barcode">Enter barcode manually</label>
+  <input id="barcode" autocomplete="off" placeholder="Scan or type barcode">
+
+  <button onclick="openItem()">Find Item</button>
+  <button onclick="startScanner()">Open Camera Scanner</button>
+  <button onclick="stopScanner()">Stop Camera</button>
+
+  <div id="reader"></div>
+  <p id="status">Ready.</p>
+
+  <script>
+    const INVENTORY_URL =
+      'https://script.google.com/macros/s/AKfycbx793FGc1zum7eTr5a0jCuDvrAt8drJiZVbz5PtinlathxB4CjgJ-npj94eV9GwHgAGMw/exec';
+
+    let scanner = null;
+
+    function openItem() {
+      const barcode = document.getElementById('barcode').value.trim();
+      if (!barcode) {
+        document.getElementById('status').textContent =
+          'Enter or scan a barcode first.';
+        return;
+      }
+
+      window.location.href =
+        INVENTORY_URL + '?barcode=' + encodeURIComponent(barcode);
+    }
+
+    async function startScanner() {
+      const status = document.getElementById('status');
+
+      if (typeof Html5Qrcode === 'undefined') {
+        status.textContent = 'Scanner library did not load. Refresh and try again.';
+        return;
+      }
+
+      try {
+        scanner = new Html5Qrcode('reader');
+        status.textContent = 'Starting camera…';
+
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 150 } },
+          async function(decodedText) {
+            document.getElementById('barcode').value = decodedText;
+            await stopScanner();
+            openItem();
+          },
+          function() {}
+        );
+
+        status.textContent = 'Camera running. Point it at a barcode.';
+      } catch (error) {
+        status.textContent =
+          'Camera could not start: ' + (error.message || String(error));
+        scanner = null;
+      }
+    }
+
+    async function stopScanner() {
+      if (scanner) {
+        try {
+          if (scanner.isScanning) await scanner.stop();
+          scanner.clear();
+        } catch (error) {}
+        scanner = null;
+      }
+    }
+  </script>
+</body>
+</html>
