@@ -22,44 +22,184 @@
     }
     button { cursor: pointer; }
     #status { white-space: pre-wrap; }
+    #results {
+      margin-top: 20px;
+      overflow-wrap: anywhere;
+    }
+    .batch {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 10px 0;
+    }
+    .warning { color: #b00020; font-weight: bold; }
+    .field { margin: 8px 0; }
   </style>
 </head>
 <body>
   <h2>Inventory Scanner</h2>
 
   <label for="barcode">Enter barcode manually</label>
-  <input id="barcode" autocomplete="off" placeholder="Scan or type barcode">
+  <input id="barcode" autocomplete="off"
+         placeholder="Scan or type barcode">
 
-  <button onclick="openItem()">Find Item</button>
+  <button id="findButton" onclick="openItem()">Find Item</button>
   <button onclick="startScanner()">Open Camera Scanner</button>
   <button onclick="stopScanner()">Stop Camera</button>
 
   <div id="reader"></div>
   <p id="status">Ready.</p>
+  <div id="results"></div>
 
   <script>
     const INVENTORY_URL =
       'https://script.google.com/macros/s/AKfycbx793FGc1zum7eTr5a0jCuDvrAt8drJiZVbz5PtinlathxB4CjgJ-npj94eV9GwHgAGMw/exec';
 
     let scanner = null;
+    let requestScript = null;
+    let requestTimeout = null;
+    let lookupInProgress = false;
 
     function openItem() {
       const barcode = document.getElementById('barcode').value.trim();
+      const status = document.getElementById('status');
+      const button = document.getElementById('findButton');
+
       if (!barcode) {
-        document.getElementById('status').textContent =
-          'Enter or scan a barcode first.';
+        status.textContent = 'Enter or scan a barcode first.';
         return;
       }
 
-      window.location.href =
-        INVENTORY_URL + '?barcode=' + encodeURIComponent(barcode);
+      if (lookupInProgress) return;
+
+      lookupInProgress = true;
+      button.disabled = true;
+      status.textContent = 'Looking up item…';
+      document.getElementById('results').replaceChildren();
+
+      if (requestScript) requestScript.remove();
+      clearTimeout(requestTimeout);
+
+      requestTimeout = setTimeout(function() {
+        finishLookup();
+        status.textContent =
+          'Lookup timed out. Check your connection and try again.';
+      }, 15000);
+
+      requestScript = document.createElement('script');
+      requestScript.src = INVENTORY_URL +
+        '?callback=inventoryCallback&barcode=' +
+        encodeURIComponent(barcode);
+
+      requestScript.onerror = function() {
+        finishLookup();
+        status.textContent =
+          'Could not connect to inventory. Please try again.';
+      };
+
+      document.body.appendChild(requestScript);
+    }
+
+    function finishLookup() {
+      lookupInProgress = false;
+      document.getElementById('findButton').disabled = false;
+      clearTimeout(requestTimeout);
+      if (requestScript) {
+        requestScript.remove();
+        requestScript = null;
+      }
+    }
+
+    // Called by the Apps Script JSONP endpoint.
+    window.inventoryCallback = function(result) {
+      finishLookup();
+
+      const status = document.getElementById('status');
+      const results = document.getElementById('results');
+      results.replaceChildren();
+
+      if (!result || !result.success) {
+        status.textContent =
+          result && result.message ? result.message : 'Lookup failed.';
+        return;
+      }
+
+      status.textContent = 'Item found.';
+      const item = result.item;
+
+      addHeading(results, item.name || 'Unnamed item', 'h3');
+      addField(results, 'Item ID', item.id);
+      addField(results, 'Barcode', item.barcode);
+      addField(results, 'Category', item.category);
+      addField(results, 'Manufacturer', item.manufacturer);
+      addField(results, 'On hand', item.onHand);
+      addField(results, 'Unit', item.unit);
+      addField(results, 'Reorder level', item.reorderLevel);
+      addField(results, 'Storage location', item.location);
+      addField(results, 'Status', item.status);
+      addField(results, 'Notes', item.notes);
+
+      addHeading(results, 'Batches', 'h3');
+
+      if (!result.batches || result.batches.length === 0) {
+        addField(results, 'Batches', 'No batches found.');
+      } else {
+        result.batches.forEach(function(batch) {
+          const card = document.createElement('div');
+          card.className = 'batch';
+          addHeading(card, 'Batch ' + (batch.id || ''), 'h4');
+          addField(card, 'Lot number', batch.lot);
+          addField(card, 'Date received', batch.received);
+          addField(card, 'Expiration', batch.expiration);
+          addField(card, 'Quantity', batch.quantity);
+          addField(card, 'Status', batch.status);
+          addField(card, 'Notes', batch.notes);
+          results.appendChild(card);
+        });
+      }
+
+      if (result.profile) {
+        addHeading(results, 'Item Profile', 'h3');
+        addField(results, 'Uses', result.profile.uses);
+        addField(results, 'Warnings', result.profile.warnings);
+        addField(results, 'Instructions', result.profile.instructions);
+        addField(results, 'Special handling', result.profile.handling);
+        addField(results, 'Profile notes', result.profile.notes);
+
+        if (result.profile.photoUrl) {
+          const link = document.createElement('a');
+          link.href = result.profile.photoUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Open item photo';
+          results.appendChild(link);
+        }
+      }
+    };
+
+    function addHeading(parent, text, tag) {
+      const element = document.createElement(tag);
+      element.textContent = text || '';
+      parent.appendChild(element);
+    }
+
+    function addField(parent, label, value) {
+      if (value === null || value === undefined || value === '') return;
+      const element = document.createElement('p');
+      element.className = 'field';
+      const strong = document.createElement('strong');
+      strong.textContent = label + ': ';
+      element.appendChild(strong);
+      element.appendChild(document.createTextNode(String(value)));
+      parent.appendChild(element);
     }
 
     async function startScanner() {
       const status = document.getElementById('status');
 
       if (typeof Html5Qrcode === 'undefined') {
-        status.textContent = 'Scanner library did not load. Refresh and try again.';
+        status.textContent =
+          'Scanner library did not load. Refresh and try again.';
         return;
       }
 
@@ -81,7 +221,8 @@
         status.textContent = 'Camera running. Point it at a barcode.';
       } catch (error) {
         status.textContent =
-          'Camera could not start: ' + (error.message || String(error));
+          'Camera could not start: ' +
+          (error.message || String(error));
         scanner = null;
       }
     }
