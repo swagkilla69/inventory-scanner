@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,6 +21,7 @@
       font-size: 16px;
     }
     button { cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
     #status { white-space: pre-wrap; }
     #results { margin-top: 20px; overflow-wrap: anywhere; }
     .batch {
@@ -40,40 +40,261 @@
     }
     .warning { color: #b00020; font-weight: bold; }
     .field { margin: 8px 0; }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 14px;
+      margin: 14px 0;
+    }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
   <h2>Inventory Scanner</h2>
 
-  <label for="barcode">Enter barcode manually</label>
-  <input id="barcode" autocomplete="off" placeholder="Scan or type barcode">
+  <section id="loginPanel" class="panel">
+    <h3>Owner Login</h3>
+    <label for="pin">Enter your four-digit PIN</label>
+    <input id="pin" type="password" inputmode="numeric"
+      autocomplete="current-password" maxlength="4" pattern="[0-9]{4}"
+      placeholder="Four-digit PIN">
+    <button id="loginButton" type="button" onclick="login()">Log In</button>
+  </section>
 
-  <button id="findButton" onclick="openItem()">Find Item</button>
-  <button onclick="startScanner()">Open Camera Scanner</button>
-  <button onclick="stopScanner()">Stop Camera</button>
+  <section id="appPanel" class="hidden">
+    <div class="panel">
+      <div id="userLabel">Logged in</div>
+      <button id="logoutButton" type="button" onclick="logout()">Log Out</button>
+    </div>
 
-  <div id="reader"></div>
-  <p id="status">Ready.</p>
-  <div id="results"></div>
+    <label for="barcode">Enter barcode manually</label>
+    <input id="barcode" autocomplete="off" placeholder="Scan or type barcode">
+    <button id="findButton" onclick="openItem()">Find Item</button>
+    <button id="cameraButton" onclick="startScanner()">Open Camera Scanner</button>
+    <button onclick="stopScanner()">Stop Camera</button>
+
+    <div id="reader"></div>
+    <div id="results"></div>
+  </section>
+
+  <p id="status">Please log in.</p>
 
   <script>
     const INVENTORY_URL =
       'https://script.google.com/macros/s/AKfycbx793FGc1zum7eTr5a0jCuDvrAt8drJiZVbz5PtinlathxB4CjgJ-npj94eV9GwHgAGMw/exec';
 
-    let scanner = null;
-    let requestScript = null;
-    let requestTimeout = null;
-    let lookupInProgress = false;
+    const SESSION_KEY = 'inventory_owner_session';
 
-    function openItem() {
+    let scanner = null;
+    let lookupInProgress = false;
+    let requestInProgress = false;
+    let sessionToken = null;
+
+    function apiRequest(action, data) {
+      return new Promise(function(resolve, reject) {
+        if (requestInProgress) {
+          reject(new Error('Another request is already running.'));
+          return;
+        }
+
+        requestInProgress = true;
+
+        const nonceBytes = new Uint8Array(16);
+        crypto.getRandomValues(nonceBytes);
+
+        const nonce = Array.from(nonceBytes)
+          .map(b => b.toString(16).padStart(2, '0')).join('');
+
+        const frameName = 'inventory_api_frame';
+        let frame = document.getElementById(frameName);
+
+        if (!frame) {
+          frame = document.createElement('iframe');
+          frame.name = frameName;
+          frame.id = frameName;
+          frame.style.display = 'none';
+          document.body.appendChild(frame);
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = INVENTORY_URL;
+        form.target = frameName;
+        form.style.display = 'none';
+
+        const field = document.createElement('input');
+        field.type = 'hidden';
+        field.name = 'payload';
+        field.value = JSON.stringify({
+          action: action,
+          data: data || {},
+          nonce: nonce
+        });
+
+        form.appendChild(field);
+        document.body.appendChild(form);
+
+        let completed = false;
+        let timeout;
+
+        function cleanup() {
+          window.removeEventListener('message', onMessage);
+          form.remove();
+          requestInProgress = false;
+          clearTimeout(timeout);
+        }
+
+        function finish(error, result) {
+          if (completed) return;
+          completed = true;
+          cleanup();
+          if (error) reject(error);
+          else resolve(result);
+        }
+
+        function onMessage(event) {
+          const message = event.data;
+
+          if (!message || message.nonce !== nonce || !message.data) return;
+
+          try {
+            const decoded = atob(message.data);
+            const bytes = Uint8Array.from(decoded, c => c.charCodeAt(0));
+            const json = new TextDecoder().decode(bytes);
+            finish(null, JSON.parse(json));
+          } catch (error) {
+            finish(new Error('The server returned an unreadable response.'));
+          }
+        }
+
+        window.addEventListener('message', onMessage);
+
+        timeout = setTimeout(function() {
+          finish(new Error(
+            'The server did not respond. Check the Apps Script deployment.'
+          ));
+        }, 20000);
+
+        try {
+          form.submit();
+        } catch (error) {
+          finish(error);
+        }
+      });
+    }
+
+    async function login() {
+      const pinInput = document.getElementById('pin');
+      const pin = pinInput.value.trim();
+      const status = document.getElementById('status');
+      const button = document.getElementById('loginButton');
+
+      if (!/^\d{4}$/.test(pin)) {
+        status.textContent = 'Enter exactly four digits.';
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = 'Logging in…';
+
+      try {
+        const result = await apiRequest('login', { pin: pin });
+        pinInput.value = '';
+
+        if (!result || !result.success || !result.token) {
+          status.textContent = result && result.message
+            ? result.message : 'Login failed.';
+          return;
+        }
+
+        sessionToken = result.token;
+        sessionStorage.setItem(SESSION_KEY, sessionToken);
+        showApp(result.displayName || 'Owner');
+        status.textContent = 'Login successful.';
+
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function validateSession() {
+      const savedToken = sessionStorage.getItem(SESSION_KEY);
+      if (!savedToken) return false;
+
+      try {
+        const result = await apiRequest('validate', { token: savedToken });
+
+        if (!result || !result.success) {
+          clearSession();
+          return false;
+        }
+
+        sessionToken = savedToken;
+        showApp(result.displayName || 'Owner');
+        return true;
+
+      } catch (error) {
+        clearSession();
+        return false;
+      }
+    }
+
+    function showApp(displayName) {
+      document.getElementById('loginPanel').classList.add('hidden');
+      document.getElementById('appPanel').classList.remove('hidden');
+      document.getElementById('userLabel').textContent =
+        'Logged in as ' + displayName;
+    }
+
+    function showLogin() {
+      document.getElementById('loginPanel').classList.remove('hidden');
+      document.getElementById('appPanel').classList.add('hidden');
+      document.getElementById('results').replaceChildren();
+      document.getElementById('pin').value = '';
+      document.getElementById('status').textContent = 'Please log in.';
+    }
+
+    function clearSession() {
+      sessionToken = null;
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+
+    async function logout() {
+      await stopScanner();
+
+      const token = sessionToken;
+      clearSession();
+      showLogin();
+
+      if (token) {
+        try {
+          await apiRequest('logout', { token: token });
+        } catch (error) {
+          // Local session has already been cleared.
+        }
+      }
+
+      document.getElementById('status').textContent = 'Logged out.';
+    }
+
+    async function openItem() {
       const barcode = document.getElementById('barcode').value.trim();
       const status = document.getElementById('status');
       const button = document.getElementById('findButton');
+
+      if (!sessionToken) {
+        status.textContent = 'Please log in first.';
+        showLogin();
+        return;
+      }
 
       if (!barcode) {
         status.textContent = 'Enter or scan a barcode first.';
         return;
       }
+
       if (lookupInProgress) return;
 
       lookupInProgress = true;
@@ -81,55 +302,46 @@
       status.textContent = 'Looking up barcode…';
       document.getElementById('results').replaceChildren();
 
-      if (requestScript) requestScript.remove();
-      clearTimeout(requestTimeout);
+      try {
+        const result = await apiRequest('lookup', {
+          token: sessionToken,
+          barcode: barcode
+        });
 
-      requestTimeout = setTimeout(function() {
-        finishLookup();
-        status.textContent = 'Lookup timed out. Check your connection and try again.';
-      }, 15000);
+        if (!result || !result.success) {
+          if (result && result.message &&
+              result.message.toLowerCase().includes('session')) {
+            clearSession();
+            showLogin();
+          }
 
-      requestScript = document.createElement('script');
-      requestScript.src = INVENTORY_URL +
-        '?callback=inventoryCallback&barcode=' + encodeURIComponent(barcode);
+          status.textContent = result && result.message
+            ? result.message : 'Lookup failed.';
+          return;
+        }
 
-      requestScript.onerror = function() {
-        finishLookup();
-        status.textContent = 'Could not connect to inventory. Please try again.';
-      };
+        renderItem(result);
 
-      document.body.appendChild(requestScript);
-    }
-
-    function finishLookup() {
-      lookupInProgress = false;
-      document.getElementById('findButton').disabled = false;
-      clearTimeout(requestTimeout);
-      if (requestScript) {
-        requestScript.remove();
-        requestScript = null;
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        lookupInProgress = false;
+        button.disabled = false;
       }
     }
 
-    window.inventoryCallback = function(result) {
-      finishLookup();
-
+    function renderItem(result) {
       const status = document.getElementById('status');
       const results = document.getElementById('results');
+
       results.replaceChildren();
 
-      if (!result || !result.success) {
-        status.textContent = result && result.message
-          ? result.message : 'Lookup failed.';
-        return;
-      }
-
-      const isBatchScan = result.scannedType === 'batch';
-      status.textContent = isBatchScan
+      status.textContent = result.scannedType === 'batch'
         ? 'Batch barcode found. The scanned batch is highlighted below.'
         : 'Item found.';
 
       const item = result.item || {};
+
       addHeading(results, item.name || 'Unnamed item', 'h3');
       addField(results, 'Item ID', item.id);
       addField(results, 'Item barcode', item.barcode);
@@ -153,6 +365,7 @@
 
           if (batch.selected === true) {
             card.classList.add('selected-batch');
+
             const label = document.createElement('p');
             label.className = 'selected-label';
             label.textContent = '✓ SCANNED BATCH';
@@ -167,6 +380,7 @@
           addField(card, 'Quantity in this batch', batch.quantity);
           addField(card, 'Status', batch.status);
           addField(card, 'Notes', batch.notes);
+
           results.appendChild(card);
         });
       }
@@ -188,7 +402,7 @@
           results.appendChild(link);
         }
       }
-    };
+    }
 
     function addHeading(parent, text, tag) {
       const element = document.createElement(tag);
@@ -198,10 +412,13 @@
 
     function addField(parent, label, value) {
       if (value === null || value === undefined || value === '') return;
+
       const element = document.createElement('p');
       element.className = 'field';
+
       const strong = document.createElement('strong');
       strong.textContent = label + ': ';
+
       element.appendChild(strong);
       element.appendChild(document.createTextNode(String(value)));
       parent.appendChild(element);
@@ -210,10 +427,18 @@
     async function startScanner() {
       const status = document.getElementById('status');
 
-      if (typeof Html5Qrcode === 'undefined') {
-        status.textContent = 'Scanner library did not load. Refresh and try again.';
+      if (!sessionToken) {
+        status.textContent = 'Please log in first.';
+        showLogin();
         return;
       }
+
+      if (typeof Html5Qrcode === 'undefined') {
+        status.textContent =
+          'Scanner library did not load. Refresh and try again.';
+        return;
+      }
+
       if (scanner) {
         status.textContent = 'Camera scanner is already running.';
         return;
@@ -228,6 +453,7 @@
           { fps: 10, qrbox: { width: 250, height: 150 } },
           async function(decodedText) {
             if (lookupInProgress) return;
+
             document.getElementById('barcode').value = decodedText;
             await stopScanner();
             openItem();
@@ -236,9 +462,10 @@
         );
 
         status.textContent = 'Camera running. Point it at a barcode.';
+
       } catch (error) {
-        status.textContent = 'Camera could not start: ' +
-          (error.message || String(error));
+        status.textContent =
+          'Camera could not start: ' + (error.message || String(error));
         scanner = null;
       }
     }
@@ -247,15 +474,32 @@
       if (scanner) {
         const currentScanner = scanner;
         scanner = null;
+
         try {
-          if (currentScanner.isScanning) await currentScanner.stop();
+          if (currentScanner.isScanning) {
+            await currentScanner.stop();
+          }
           currentScanner.clear();
         } catch (error) {}
       }
     }
 
-    document.getElementById('barcode').addEventListener('keydown', function(event) {
-      if (event.key === 'Enter') openItem();
+    document.getElementById('barcode').addEventListener(
+      'keydown',
+      function(event) {
+        if (event.key === 'Enter') openItem();
+      }
+    );
+
+    document.getElementById('pin').addEventListener(
+      'keydown',
+      function(event) {
+        if (event.key === 'Enter') login();
+      }
+    );
+
+    window.addEventListener('load', async function() {
+      await validateSession();
     });
   </script>
 </body>
