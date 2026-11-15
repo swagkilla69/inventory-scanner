@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,7 +14,7 @@
       padding: 16px;
       line-height: 1.4;
     }
-    input, button {
+    input, button, select, textarea {
       box-sizing: border-box;
       width: 100%;
       padding: 14px;
@@ -22,6 +23,7 @@
     }
     button { cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }
+    textarea { min-height: 75px; resize: vertical; }
     #status { white-space: pre-wrap; }
     #results { margin-top: 20px; overflow-wrap: anywhere; }
     .batch {
@@ -47,6 +49,9 @@
       margin: 14px 0;
     }
     .hidden { display: none; }
+    .receive-button { background: #e5f5e9; }
+    .remove-button { background: #fff0f0; }
+    .small-note { font-size: 13px; color: #555; }
   </style>
 </head>
 <body>
@@ -88,7 +93,12 @@
     let scanner = null;
     let lookupInProgress = false;
     let requestInProgress = false;
+    let transactionInProgress = false;
     let sessionToken = null;
+
+    let currentItem = null;
+    let currentBatches = [];
+    let currentLookupBarcode = '';
 
     function apiRequest(action, data) {
       return new Promise(function(resolve, reject) {
@@ -254,6 +264,9 @@
       document.getElementById('results').replaceChildren();
       document.getElementById('pin').value = '';
       document.getElementById('status').textContent = 'Please log in.';
+      currentItem = null;
+      currentBatches = [];
+      currentLookupBarcode = '';
     }
 
     function clearSession() {
@@ -295,7 +308,7 @@
         return;
       }
 
-      if (lookupInProgress) return;
+      if (lookupInProgress || transactionInProgress) return;
 
       lookupInProgress = true;
       button.disabled = true;
@@ -320,6 +333,7 @@
           return;
         }
 
+        currentLookupBarcode = barcode;
         renderItem(result);
 
       } catch (error) {
@@ -341,6 +355,8 @@
         : 'Item found.';
 
       const item = result.item || {};
+      currentItem = item;
+      currentBatches = Array.isArray(result.batches) ? result.batches : [];
 
       addHeading(results, item.name || 'Unnamed item', 'h3');
       addField(results, 'Item ID', item.id);
@@ -356,10 +372,10 @@
 
       addHeading(results, 'Batches', 'h3');
 
-      if (!result.batches || result.batches.length === 0) {
+      if (currentBatches.length === 0) {
         addField(results, 'Batches', 'No batches found.');
       } else {
-        result.batches.forEach(function(batch) {
+        currentBatches.forEach(function(batch) {
           const card = document.createElement('div');
           card.className = 'batch';
 
@@ -383,6 +399,8 @@
 
           results.appendChild(card);
         });
+
+        renderTransactionPanel(results);
       }
 
       if (result.profile) {
@@ -400,6 +418,230 @@
           link.rel = 'noopener noreferrer';
           link.textContent = 'Open item photo';
           results.appendChild(link);
+        }
+      }
+    }
+
+    function renderTransactionPanel(parent) {
+      const panel = document.createElement('section');
+      panel.className = 'panel';
+
+      addHeading(panel, 'Manage Stock', 'h3');
+
+      const batchLabel = document.createElement('label');
+      batchLabel.htmlFor = 'transactionBatch';
+      batchLabel.textContent = 'Select the batch';
+      panel.appendChild(batchLabel);
+
+      const batchSelect = document.createElement('select');
+      batchSelect.id = 'transactionBatch';
+      batchSelect.required = true;
+
+      currentBatches.forEach(function(batch) {
+        const option = document.createElement('option');
+        option.value = batch.id;
+
+        const expiration = batch.expiration
+          ? ' | Expires: ' + batch.expiration : '';
+        const quantity = batch.quantity !== undefined
+          ? ' | Quantity: ' + batch.quantity : '';
+
+        option.textContent =
+          (batch.id || 'Unnamed batch') + expiration + quantity;
+
+        if (batch.selected === true) {
+          option.selected = true;
+        }
+
+        batchSelect.appendChild(option);
+      });
+
+      panel.appendChild(batchSelect);
+
+      const typeLabel = document.createElement('label');
+      typeLabel.htmlFor = 'transactionType';
+      typeLabel.textContent = 'Transaction type';
+      panel.appendChild(typeLabel);
+
+      const typeSelect = document.createElement('select');
+      typeSelect.id = 'transactionType';
+
+      const receiveOption = document.createElement('option');
+      receiveOption.value = 'Receive';
+      receiveOption.textContent = 'Receive stock';
+
+      const removeOption = document.createElement('option');
+      removeOption.value = 'Remove';
+      removeOption.textContent = 'Remove stock';
+
+      typeSelect.appendChild(receiveOption);
+      typeSelect.appendChild(removeOption);
+      panel.appendChild(typeSelect);
+
+      const quantityLabel = document.createElement('label');
+      quantityLabel.htmlFor = 'transactionQuantity';
+      quantityLabel.textContent = 'Quantity';
+      panel.appendChild(quantityLabel);
+
+      const quantityInput = document.createElement('input');
+      quantityInput.id = 'transactionQuantity';
+      quantityInput.type = 'number';
+      quantityInput.min = '1';
+      quantityInput.step = '1';
+      quantityInput.placeholder = 'Enter quantity';
+      quantityInput.required = true;
+      panel.appendChild(quantityInput);
+
+      const reasonLabel = document.createElement('label');
+      reasonLabel.htmlFor = 'transactionReason';
+      reasonLabel.textContent = 'Reason / notes';
+      panel.appendChild(reasonLabel);
+
+      const reasonInput = document.createElement('textarea');
+      reasonInput.id = 'transactionReason';
+      reasonInput.placeholder = 'Optional: reason for this transaction';
+      panel.appendChild(reasonInput);
+
+      const note = document.createElement('p');
+      note.className = 'small-note';
+      note.textContent =
+        'Every transaction applies to the selected batch only.';
+      panel.appendChild(note);
+
+      const submitButton = document.createElement('button');
+      submitButton.id = 'transactionButton';
+      submitButton.type = 'button';
+      submitButton.textContent = 'Submit Stock Transaction';
+      submitButton.onclick = submitTransaction;
+      panel.appendChild(submitButton);
+
+      parent.appendChild(panel);
+    }
+
+    function createRequestId() {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+
+      return Array.from(bytes)
+        .map(function(byte) {
+          return byte.toString(16).padStart(2, '0');
+        }).join('');
+    }
+
+    async function submitTransaction() {
+      const status = document.getElementById('status');
+      const button = document.getElementById('transactionButton');
+
+      if (!sessionToken) {
+        status.textContent = 'Your session has expired. Please log in again.';
+        showLogin();
+        return;
+      }
+
+      if (!currentItem || !currentItem.id) {
+        status.textContent = 'Look up an item before recording stock.';
+        return;
+      }
+
+      if (transactionInProgress || lookupInProgress) return;
+
+      const batchId = document.getElementById('transactionBatch').value;
+      const type = document.getElementById('transactionType').value;
+      const quantity = Number(
+        document.getElementById('transactionQuantity').value
+      );
+      const reason = document.getElementById('transactionReason').value.trim();
+
+      if (!batchId) {
+        status.textContent = 'Select a batch first.';
+        return;
+      }
+
+      if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+        status.textContent = 'Enter a whole-number quantity greater than zero.';
+        return;
+      }
+
+      const selectedBatch = currentBatches.find(function(batch) {
+        return String(batch.id) === String(batchId);
+      });
+
+      if (!selectedBatch) {
+        status.textContent = 'The selected batch could not be found.';
+        return;
+      }
+
+      if (type === 'Remove' &&
+          quantity > Number(selectedBatch.quantity)) {
+        status.textContent =
+          'You cannot remove more than the selected batch contains.';
+        return;
+      }
+
+      const confirmation = type === 'Receive'
+        ? 'Receive ' + quantity + ' into batch ' + batchId + '?'
+        : 'Remove ' + quantity + ' from batch ' + batchId + '?';
+
+      if (!window.confirm(confirmation)) return;
+
+      transactionInProgress = true;
+      button.disabled = true;
+      status.textContent = 'Submitting stock transaction…';
+
+      try {
+        const result = await apiRequest('transaction', {
+          token: sessionToken,
+          request: {
+            itemId: currentItem.id,
+            batchId: batchId,
+            type: type,
+            quantity: quantity,
+            reason: reason,
+            requestId: createRequestId()
+          }
+        });
+
+        if (!result || !result.success) {
+          status.textContent = result && result.message
+            ? result.message
+            : 'Transaction failed. Check the inventory before trying again.';
+          return;
+        }
+
+        status.textContent =
+          'Transaction recorded. Refreshing inventory…';
+
+        document.getElementById('transactionQuantity').value = '';
+        document.getElementById('transactionReason').value = '';
+
+        // Re-read the item from the server. This does not change stock.
+        const refreshed = await apiRequest('lookup', {
+          token: sessionToken,
+          barcode: currentLookupBarcode
+        });
+
+        if (refreshed && refreshed.success) {
+          renderItem(refreshed);
+          status.textContent =
+            'Transaction recorded successfully. Inventory updated.';
+        } else {
+          status.textContent =
+            'Transaction was recorded, but the inventory display could not refresh. Look up the item again before making another transaction.';
+        }
+
+      } catch (error) {
+        status.textContent =
+          'The transaction response could not be confirmed: ' +
+          error.message +
+          ' Check the batch quantity and transaction log before retrying.';
+      } finally {
+        transactionInProgress = false;
+
+        const refreshedButton =
+          document.getElementById('transactionButton');
+
+        if (refreshedButton) {
+          refreshedButton.disabled = false;
         }
       }
     }
@@ -452,7 +694,7 @@
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 250, height: 150 } },
           async function(decodedText) {
-            if (lookupInProgress) return;
+            if (lookupInProgress || transactionInProgress) return;
 
             document.getElementById('barcode').value = decodedText;
             await stopScanner();
@@ -472,14 +714,14 @@
 
     async function stopScanner() {
       if (scanner) {
-        const currentScanner = scanner;
+        const currentScannerInstance = scanner;
         scanner = null;
 
         try {
-          if (currentScanner.isScanning) {
-            await currentScanner.stop();
+          if (currentScannerInstance.isScanning) {
+            await currentScannerInstance.stop();
           }
-          currentScanner.clear();
+          currentScannerInstance.clear();
         } catch (error) {}
       }
     }
