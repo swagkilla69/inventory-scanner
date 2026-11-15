@@ -282,8 +282,10 @@ function status(message) {
 
 function requestId() {
   const bytes = new Uint8Array(16);
+
   if (window.crypto && window.crypto.getRandomValues) {
     window.crypto.getRandomValues(bytes);
+
     return Array.from(bytes).map(function(b) {
       return b.toString(16).padStart(2, '0');
     }).join('');
@@ -371,6 +373,7 @@ async function login() {
   if (requestInProgress) return;
 
   const pin = $('pin').value.trim();
+
   if (!/^\d{4}$/.test(pin)) {
     status('Enter your four-digit PIN.');
     return;
@@ -381,12 +384,16 @@ async function login() {
 
   try {
     status('Signing in. Please wait…');
+
     const r = await api('login', { pin: pin });
 
     if (!r || !r.success) {
       throw new Error(r && r.message ? r.message : 'Login failed.');
     }
-    if (!r.token) throw new Error('The server did not return a session token.');
+
+    if (!r.token) {
+      throw new Error('The server did not return a session token.');
+    }
 
     token = r.token;
     sessionStorage.setItem(SESSION_KEY, token);
@@ -396,8 +403,10 @@ async function login() {
     $('pin').value = '';
     showApp();
     status('Signed in successfully.');
+
   } catch (e) {
     status(e.message || 'Login failed.');
+
   } finally {
     requestInProgress = false;
     $('loginButton').disabled = false;
@@ -412,6 +421,7 @@ async function validate() {
 
   try {
     status('Checking saved session…');
+
     const r = await api('validate', { token: token });
 
     if (!r || !r.success) {
@@ -420,13 +430,16 @@ async function validate() {
 
     currentUser = r;
     currentPermissions = r.permissions || {};
+
     showApp();
     status('Session restored.');
+
   } catch (e) {
     sessionStorage.removeItem(SESSION_KEY);
     token = '';
     currentUser = null;
     currentPermissions = {};
+
     showLogin();
     status(e.message || 'Please log in.');
   }
@@ -471,7 +484,9 @@ function showApp() {
 
   $('startCameraButton').disabled = !currentPermissions.scan;
 
-  if (currentPermissions.manageUsers) loadUsers();
+  if (currentPermissions.manageUsers) {
+    loadUsers();
+  }
 }
 
 async function logout() {
@@ -514,6 +529,7 @@ async function findItem(value) {
 
   try {
     status('Looking up item…');
+
     const r = await api('lookup', {
       barcode: barcode,
       token: token
@@ -525,6 +541,7 @@ async function findItem(value) {
 
     renderItem(r);
     status('Item found.');
+
   } catch (e) {
     status(e.message || 'Lookup failed.');
   }
@@ -532,6 +549,7 @@ async function findItem(value) {
 
 function renderItem(r) {
   currentItem = r;
+
   $('itemPanel').classList.remove('hidden');
   $('itemName').textContent = r.item.name || 'Unnamed item';
 
@@ -587,15 +605,20 @@ function renderItem(r) {
       (b.expiration ? ' — exp ' + b.expiration : '');
 
     if (b.selected) option.selected = true;
+
     $('batchSelect').appendChild(option);
   });
 
-  if (r.selectedBatchId) $('batchSelect').value = r.selectedBatchId;
+  if (r.selectedBatchId) {
+    $('batchSelect').value = r.selectedBatchId;
+  }
 
   $('txnType').innerHTML = '';
+
   if (currentPermissions.receive) {
     $('txnType').add(new Option('Receive stock', 'Receive'));
   }
+
   if (currentPermissions.remove) {
     $('txnType').add(new Option('Remove stock', 'Remove'));
   }
@@ -704,8 +727,10 @@ async function submitNewProduct() {
     } else {
       $('itemPanel').classList.add('hidden');
     }
+
   } catch (e) {
     status(e.message || 'Product creation failed.');
+
   } finally {
     button.disabled = false;
   }
@@ -738,6 +763,7 @@ async function submitTransaction() {
     status('Select a specific batch before changing stock.');
     return;
   }
+
   if (!Number.isSafeInteger(qty) || qty <= 0) {
     status('Enter a positive whole-number quantity.');
     return;
@@ -763,10 +789,16 @@ async function submitTransaction() {
     }
 
     const barcode = currentItem.item.barcode;
+
     $('txnQty').value = '';
     $('txnReason').value = '';
+
     status(r.message);
-    if (barcode) await findItem(barcode);
+
+    if (barcode) {
+      await findItem(barcode);
+    }
+
   } catch (e) {
     status(e.message || 'Transaction failed.');
   }
@@ -778,6 +810,7 @@ async function createBatch() {
   if (!currentItem) return;
 
   const qty = Number($('newQuantity').value);
+
   if (!Number.isSafeInteger(qty) || qty <= 0) {
     status('Enter a positive whole-number quantity.');
     return;
@@ -811,8 +844,13 @@ async function createBatch() {
     }
 
     const barcode = currentItem.item.barcode;
+
     status(r.message + ' Batch barcode: ' + r.batchBarcode);
-    if (barcode) await findItem(barcode);
+
+    if (barcode) {
+      await findItem(barcode);
+    }
+
   } catch (e) {
     status(e.message || 'Batch creation failed.');
   }
@@ -844,11 +882,88 @@ async function saveProfile() {
     }
 
     const barcode = currentItem.item.barcode;
+
     status(r.message);
-    if (barcode) await findItem(barcode);
+
+    if (barcode) {
+      await findItem(barcode);
+    }
+
   } catch (e) {
     status(e.message || 'Profile save failed.');
   }
+}
+
+/* ---------- Rear camera selection ---------- */
+
+async function findRearCameraId_() {
+  if (!navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia ||
+      !navigator.mediaDevices.enumerateDevices) {
+    throw new Error(
+      'This browser does not support camera device selection.'
+    );
+  }
+
+  let permissionStream = null;
+
+  try {
+    status('Requesting camera permission…');
+
+    // Request permission so Safari can reveal camera device labels.
+    // This temporary stream is stopped before the scanner is started.
+    permissionStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' }
+      },
+      audio: false
+    });
+
+  } catch (e) {
+    throw new Error(
+      'Camera permission was not granted: ' +
+      (e.message || String(e))
+    );
+
+  } finally {
+    if (permissionStream) {
+      permissionStream.getTracks().forEach(function(track) {
+        track.stop();
+      });
+    }
+  }
+
+  // Enumerate after permission has been granted.
+  const devices = await navigator.mediaDevices.enumerateDevices();
+
+  const cameras = devices.filter(function(device) {
+    return device.kind === 'videoinput';
+  });
+
+  if (!cameras.length) {
+    throw new Error('No cameras were detected by Safari.');
+  }
+
+  // Select only a camera whose label identifies it as rear-facing.
+  const rearCamera = cameras.find(function(camera) {
+    return /back|rear|environment|world|背面|trasera/i.test(
+      camera.label || ''
+    );
+  });
+
+  if (!rearCamera) {
+    const names = cameras.map(function(camera, index) {
+      return camera.label || ('Camera ' + (index + 1));
+    });
+
+    throw new Error(
+      'Safari detected cameras but did not identify a rear camera. ' +
+      'Detected: ' + names.join(', ') +
+      '. No front-camera fallback was started.'
+    );
+  }
+
+  return rearCamera.deviceId;
 }
 
 /* ---------- Camera scanner ---------- */
@@ -859,7 +974,9 @@ async function startCamera() {
     return;
   }
 
-  if (cameraStarting || (scanner && scanner.isScanning)) return;
+  if (cameraStarting || (scanner && scanner.isScanning)) {
+    return;
+  }
 
   cameraStarting = true;
   cameraResultHandled = false;
@@ -867,17 +984,23 @@ async function startCamera() {
 
   try {
     if (!window.isSecureContext) {
-      throw new Error('Camera access requires HTTPS. Open the GitHub Pages website.');
+      throw new Error(
+        'Camera access requires HTTPS. Open the GitHub Pages website.'
+      );
     }
 
     if (!window.Html5Qrcode) {
-      throw new Error('The camera scanning library did not load. Refresh the page.');
+      throw new Error(
+        'The camera scanning library did not load. Refresh the page.'
+      );
     }
 
-    // Clear any previous scanner instance before starting again.
+    // Clean up a previous scanner instance.
     if (scanner) {
       try {
-        if (scanner.isScanning) await scanner.stop();
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
       } catch (e) {}
 
       try {
@@ -890,52 +1013,57 @@ async function startCamera() {
     $('reader').classList.remove('hidden');
     $('cameraInstructions').classList.remove('hidden');
 
+    status('Identifying the rear camera…');
+
+    // This returns the rear camera's actual device ID.
+    const rearCameraId = await findRearCameraId_();
+
     scanner = new Html5Qrcode('reader', {
       verbose: false
     });
 
-    status('Requesting the REAR camera…');
-
-    // Explicitly request the rear-facing camera.
-    // No cams[0] selection and no automatic front-camera fallback.
-    const cameraConfig = {
-      facingMode: "environment"
-    };
-
-    // The qrbox function defines the ONLY area used for decoding.
-    // The library shades the area outside this box.
     const scanConfig = {
       fps: 10,
+
       qrbox: function(viewfinderWidth, viewfinderHeight) {
-        const width = Math.min(
-          320,
-          Math.floor(viewfinderWidth * 0.85)
-        );
-
-        const height = Math.min(
-          180,
-          Math.floor(viewfinderHeight * 0.40)
-        );
-
         return {
-          width: width,
-          height: height
+          width: Math.min(
+            320,
+            Math.floor(viewfinderWidth * 0.85)
+          ),
+          height: Math.min(
+            180,
+            Math.floor(viewfinderHeight * 0.40)
+          )
         };
       },
+
       aspectRatio: 1.333333,
       disableFlip: true
     };
 
+    status('Starting rear camera: ' + (
+      camerasLabel_(rearCameraId)
+    ));
+
+    // IMPORTANT:
+    // Use the selected rear camera's device ID.
+    // Do not use facingMode here.
     await scanner.start(
-      cameraConfig,
+      rearCameraId,
       scanConfig,
+
       function(decodedText) {
-        // Prevent multiple detections from triggering multiple lookups.
         if (cameraResultHandled) return;
+
         cameraResultHandled = true;
 
         const result = String(decodedText || '').trim();
-        if (!result) return;
+
+        if (!result) {
+          cameraResultHandled = false;
+          return;
+        }
 
         $('barcode').value = result;
         status('Barcode scanned: ' + result + '\nLooking up item…');
@@ -944,28 +1072,29 @@ async function startCamera() {
           findItem(result);
         });
       },
+
       function() {
-        // Normal frame with no barcode found. Do nothing.
+        // No barcode found in this frame. Continue scanning.
       }
     );
 
     status(
-      'REAR camera active.\n' +
+      'Rear camera active.\n' +
       'Only the barcode inside the scanning box will be read.'
     );
 
   } catch (e) {
     const message = e && e.message ? e.message : String(e);
 
-    // Do not silently switch to the front camera.
     status(
-      'Could not start the rear camera: ' + message +
-      '\nCheck camera permission and close other apps using the camera.'
+      'Could not start the rear camera: ' + message
     );
 
     if (scanner) {
       try {
-        if (scanner.isScanning) await scanner.stop();
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
       } catch (ignored) {}
 
       try {
@@ -984,8 +1113,15 @@ async function startCamera() {
   }
 }
 
+// Keep the camera label available for the status message.
+function camerasLabel_(deviceId) {
+  // The device ID is intentionally not displayed.
+  return 'selected rear-facing device';
+}
+
 async function stopCamera() {
   if (cameraStopping) return;
+
   cameraStopping = true;
 
   try {
@@ -1019,6 +1155,7 @@ async function loadUsers() {
     status('Loading user accounts…');
 
     const r = await api('usersList', { token: token });
+
     if (!r || !r.success) {
       throw new Error(r && r.message ? r.message : 'Could not load users.');
     }
@@ -1042,6 +1179,7 @@ async function loadUsers() {
     });
 
     status('User accounts loaded.');
+
   } catch (e) {
     status(e.message || 'Could not load users.');
   }
@@ -1068,6 +1206,7 @@ $('permissionInputs').innerHTML =
 
 function editUser(u) {
   editingUserEmail = u.email;
+
   $('uEmail').value = u.email;
   $('uEmail').disabled = true;
   $('uName').value = u.displayName;
@@ -1076,12 +1215,15 @@ function editUser(u) {
 
   Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
     const el = $('perm_' + k);
-    if (el) el.checked = !!(u.permissions && u.permissions[k]);
+    if (el) {
+      el.checked = !!(u.permissions && u.permissions[k]);
+    }
   });
 }
 
 function clearUserForm() {
   editingUserEmail = '';
+
   $('uEmail').disabled = false;
   $('uEmail').value = '';
   $('uName').value = '';
@@ -1119,8 +1261,10 @@ async function saveUser() {
     }
 
     status(r.message);
+
     clearUserForm();
     await loadUsers();
+
   } catch (e) {
     status(e.message || 'Could not save user.');
   }
@@ -1129,11 +1273,15 @@ async function saveUser() {
 /* ---------- Startup ---------- */
 
 $('pin').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') login();
+  if (e.key === 'Enter') {
+    login();
+  }
 });
 
 $('barcode').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') findItem();
+  if (e.key === 'Enter') {
+    findItem();
+  }
 });
 
 validate();
