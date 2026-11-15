@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -16,7 +17,7 @@ input,select,textarea,button{font:inherit;width:100%;padding:11px;border:1px sol
 button{background:#1a73e8;color:white;border:0;font-weight:bold;cursor:pointer}
 button.secondary{background:#5f6368}
 button.danger{background:#b3261e}
-button:disabled{opacity:.5}
+button:disabled{opacity:.5;cursor:wait}
 small,.muted{color:#666}
 .row{display:flex;gap:8px}
 .row>*{flex:1;min-width:0}
@@ -24,7 +25,7 @@ small,.muted{color:#666}
 #reader{width:100%;margin-top:10px}
 .itemtitle{font-size:21px;font-weight:bold}
 .batch{border:1px solid #ddd;border-radius:8px;padding:10px;margin:8px 0}
-.status{padding:9px;border-radius:8px;background:#eef3fd;margin:8px 0;white-space:pre-wrap}
+.status{padding:9px;border-radius:8px;background:#eef3fd;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .checkline{display:flex;align-items:center;gap:8px;font-weight:normal}
 .checkline input{width:auto}
 img{max-width:100%;max-height:180px;object-fit:contain}
@@ -38,16 +39,10 @@ img{max-width:100%;max-height:180px;object-fit:contain}
 <section id="loginPanel" class="panel">
   <h2>Sign in</h2>
   <label for="pin">Four-digit PIN</label>
-  <input
-    id="pin"
-    type="password"
-    inputmode="numeric"
-    pattern="[0-9]*"
-    maxlength="4"
-    autocomplete="one-time-code"
-    placeholder="••••"
-  >
-  <button onclick="login()">Log In</button>
+  <input id="pin" type="password" inputmode="numeric"
+    pattern="[0-9]*" maxlength="4" autocomplete="one-time-code"
+    placeholder="••••">
+  <button id="loginButton" type="button" onclick="login()">Log In</button>
 </section>
 
 <section id="app" class="hidden">
@@ -55,20 +50,19 @@ img{max-width:100%;max-height:180px;object-fit:contain}
   <div class="panel">
     <div class="row">
       <div><b id="welcome"></b></div>
-      <button class="secondary" onclick="logout()">Log Out</button>
+      <button class="secondary" type="button" onclick="logout()">Log Out</button>
     </div>
 
     <label for="barcode">Enter barcode manually</label>
     <div class="row">
       <input id="barcode" placeholder="Barcode">
-      <button onclick="findItem()">Find Item</button>
+      <button type="button" onclick="findItem()">Find Item</button>
     </div>
 
     <div class="row">
-      <button onclick="startCamera()">Open Camera Scanner</button>
-      <button class="secondary" onclick="stopCamera()">Stop Camera</button>
+      <button type="button" onclick="startCamera()">Open Camera Scanner</button>
+      <button class="secondary" type="button" onclick="stopCamera()">Stop Camera</button>
     </div>
-
     <div id="reader"></div>
   </div>
 
@@ -82,79 +76,73 @@ img{max-width:100%;max-height:180px;object-fit:contain}
 
     <div id="stockPanel" class="hidden">
       <h2>Stock transaction</h2>
-
-      <label>Selected batch</label>
+      <label for="batchSelect">Selected batch</label>
       <select id="batchSelect"></select>
 
-      <label>Action</label>
-      <select id="txnType">
-        <option value="Receive">Receive stock</option>
-        <option value="Remove">Remove stock</option>
-      </select>
+      <label for="txnType">Action</label>
+      <select id="txnType"></select>
 
-      <label>Quantity</label>
+      <label for="txnQty">Quantity</label>
       <input id="txnQty" type="number" min="1" step="1">
 
-      <label>Reason</label>
+      <label for="txnReason">Reason</label>
       <input id="txnReason" placeholder="Reason">
 
-      <button onclick="submitTransaction()">Submit transaction</button>
+      <button type="button" onclick="submitTransaction()">Submit transaction</button>
     </div>
 
     <div id="newBatchPanel" class="hidden">
       <h2>Create new batch</h2>
-
-      <label>Lot / batch number</label>
+      <label for="newLot">Lot / batch number</label>
       <input id="newLot">
 
       <div class="row">
         <div>
-          <label>Date received</label>
+          <label for="newReceived">Date received</label>
           <input id="newReceived" type="date">
         </div>
         <div>
-          <label>Expiration date</label>
+          <label for="newExpiration">Expiration date</label>
           <input id="newExpiration" type="date">
         </div>
       </div>
 
-      <label>Starting quantity</label>
+      <label for="newQuantity">Starting quantity</label>
       <input id="newQuantity" type="number" min="1" step="1">
 
-      <label>Supplier</label>
+      <label for="newSupplier">Supplier</label>
       <input id="newSupplier">
 
-      <label>Location</label>
+      <label for="newLocation">Location</label>
       <input id="newLocation">
 
-      <label>Notes</label>
+      <label for="newNotes">Notes</label>
       <textarea id="newNotes"></textarea>
 
-      <button onclick="createBatch()">Create batch</button>
+      <button type="button" onclick="createBatch()">Create batch</button>
     </div>
 
     <div id="profilePanel" class="hidden">
       <h2>Edit item profile</h2>
-
-      <label>Uses</label>
+      <label for="pUses">Uses</label>
       <textarea id="pUses"></textarea>
 
-      <label>Warnings / contraindications</label>
+      <label for="pWarnings">Warnings / contraindications</label>
       <textarea id="pWarnings"></textarea>
 
-      <label>Instructions</label>
+      <label for="pInstructions">Instructions</label>
       <textarea id="pInstructions"></textarea>
 
-      <label>Special handling</label>
+      <label for="pHandling">Special handling</label>
       <textarea id="pHandling"></textarea>
 
-      <label>Profile notes</label>
+      <label for="pNotes">Profile notes</label>
       <textarea id="pNotes"></textarea>
 
-      <label>Photo URL</label>
+      <label for="pPhoto">Photo URL</label>
       <input id="pPhoto">
 
-      <button onclick="saveProfile()">Save profile</button>
+      <button type="button" onclick="saveProfile()">Save profile</button>
     </div>
   </div>
 
@@ -163,14 +151,13 @@ img{max-width:100%;max-height:180px;object-fit:contain}
     <div id="usersList"></div>
 
     <h2>Add / edit account</h2>
-
-    <label>Email address (account contact, not used to log in)</label>
+    <label for="uEmail">Email address (account contact, not used to log in)</label>
     <input id="uEmail" type="email">
 
-    <label>Display name</label>
+    <label for="uName">Display name</label>
     <input id="uName">
 
-    <label>PIN (leave blank to keep existing PIN)</label>
+    <label for="uPin">PIN (leave blank to keep existing PIN)</label>
     <input id="uPin" inputmode="numeric" maxlength="4" type="password">
 
     <label class="checkline">
@@ -179,13 +166,14 @@ img{max-width:100%;max-height:180px;object-fit:contain}
     </label>
 
     <div id="permissionInputs"></div>
-
-    <button onclick="saveUser()">Save user</button>
+    <button type="button" onclick="saveUser()">Save user</button>
   </div>
 
 </section>
 
 <script>
+'use strict';
+
 const API_URL =
   'https://script.google.com/macros/s/AKfycbyLBxzGHD23XGf5stPlHvWZ2E_Rvo6Bg0i23bcmtY2eLHAb9iRTA3NEHOByaNaCwCTuCg/exec';
 
@@ -196,40 +184,49 @@ let currentUser = null;
 let currentItem = null;
 let scanner = null;
 let currentPermissions = {};
+let requestInProgress = false;
 
 const $ = id => document.getElementById(id);
 
-function status(s) {
-  $('status').textContent = s;
+function status(message) {
+  $('status').textContent = String(message || '');
 }
 
 function requestId() {
-  return 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.replace(/[x]/g, function() {
+  const bytes = new Uint8Array(16);
+  if (window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes).map(function(b) {
+      return b.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  return 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.replace(/x/g, function() {
     return Math.floor(Math.random() * 16).toString(16);
   });
 }
 
 /*
- * Apps Script communication.
- * Uses JSONP rather than the previous hidden-iframe bridge.
+ * Apps Script JSONP communication.
+ * The timeout is extended because PIN verification hashes every active
+ * account using the existing 10,000-iteration hash algorithm.
  */
 function api(action, data = {}) {
   return new Promise(function(resolve, reject) {
     const nonce = requestId();
     const callbackName = 'inventoryCallback_' + nonce;
     const script = document.createElement('script');
-
     let finished = false;
 
     const timer = setTimeout(function() {
       finish(new Error(
-        'Server timed out. Check that the latest Apps Script deployment is active, then try again.'
+        'The server did not respond within 120 seconds. ' +
+        'Check Apps Script Executions for the login request.'
       ));
-    }, 30000);
+    }, 120000);
 
     function finish(error, result) {
       if (finished) return;
-
       finished = true;
       clearTimeout(timer);
 
@@ -243,11 +240,8 @@ function api(action, data = {}) {
         script.parentNode.removeChild(script);
       }
 
-      if (error) {
-        reject(error);
-      } else {
-        resolve(result);
-      }
+      if (error) reject(error);
+      else resolve(result);
     }
 
     window[callbackName] = function(message) {
@@ -256,18 +250,16 @@ function api(action, data = {}) {
         return;
       }
 
-      finish(
-        null,
-        message.result || {
-          success: false,
-          message: 'The server returned an empty response.'
-        }
-      );
+      finish(null, message.result || {
+        success: false,
+        message: 'The server returned an empty response.'
+      });
     };
 
     script.onerror = function() {
       finish(new Error(
-        'Could not reach the Apps Script server. Check the web app deployment and internet connection.'
+        'Could not load the Apps Script response. ' +
+        'Check that the web app is deployed for access by anyone.'
       ));
     };
 
@@ -277,10 +269,12 @@ function api(action, data = {}) {
       nonce: nonce
     });
 
-    script.src =
-      API_URL +
-      '?payload=' + encodeURIComponent(payload) +
-      '&callback=' + encodeURIComponent(callbackName);
+    const separator = API_URL.includes('?') ? '&' : '?';
+
+    script.src = API_URL + separator +
+      'payload=' + encodeURIComponent(payload) +
+      '&callback=' + encodeURIComponent(callbackName) +
+      '&cacheBust=' + Date.now();
 
     document.head.appendChild(script);
   });
@@ -289,33 +283,41 @@ function api(action, data = {}) {
 /* ---------- Login and session ---------- */
 
 async function login() {
-  const pin = $('pin').value.trim();
+  if (requestInProgress) return;
 
+  const pin = $('pin').value.trim();
   if (!/^\d{4}$/.test(pin)) {
     status('Enter your four-digit PIN.');
     return;
   }
 
+  requestInProgress = true;
+  $('loginButton').disabled = true;
+
   try {
-    status('Signing in…');
+    status('Signing in. Please wait…');
 
     const r = await api('login', { pin: pin });
 
-    if (!r.success) {
-      throw new Error(r.message);
+    if (!r || !r.success) {
+      throw new Error(r && r.message ? r.message : 'Login failed.');
     }
+
+    if (!r.token) throw new Error('The server did not return a session token.');
 
     token = r.token;
     sessionStorage.setItem(SESSION_KEY, token);
-
     currentUser = r;
     currentPermissions = r.permissions || {};
 
-    showApp();
-    status('Signed in.');
     $('pin').value = '';
+    showApp();
+    status('Signed in successfully.');
   } catch (e) {
-    status(e.message);
+    status(e.message || 'Login failed.');
+  } finally {
+    requestInProgress = false;
+    $('loginButton').disabled = false;
   }
 }
 
@@ -326,21 +328,22 @@ async function validate() {
   }
 
   try {
-    const r = await api('validate', { token: token });
+    status('Checking saved session…');
 
-    if (!r.success) {
-      throw new Error(r.message);
-    }
+    const r = await api('validate', { token: token });
+    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Session is invalid.');
 
     currentUser = r;
     currentPermissions = r.permissions || {};
-
     showApp();
+    status('Session restored.');
   } catch (e) {
     sessionStorage.removeItem(SESSION_KEY);
     token = '';
+    currentUser = null;
+    currentPermissions = {};
     showLogin();
-    status(e.message);
+    status(e.message || 'Please log in.');
   }
 }
 
@@ -376,27 +379,31 @@ function showApp() {
     !currentPermissions.manageUsers
   );
 
-  if (currentPermissions.manageUsers) {
-    loadUsers();
-  }
+  if (currentPermissions.manageUsers) loadUsers();
 }
 
 async function logout() {
-  try {
-    await api('logout', { token: token });
-  } catch (e) {}
+  const oldToken = token;
 
   token = '';
   sessionStorage.removeItem(SESSION_KEY);
-
   currentUser = null;
   currentItem = null;
+  currentPermissions = {};
 
-  stopCamera();
+  await stopCamera();
 
   $('itemPanel').classList.add('hidden');
-
   showLogin();
+
+  if (oldToken) {
+    try {
+      await api('logout', { token: oldToken });
+    } catch (e) {
+      // Local logout remains effective if the server cannot be reached.
+    }
+  }
+
   status('Logged out.');
 }
 
@@ -423,20 +430,17 @@ async function findItem(value) {
       token: token
     });
 
-    if (!r.success) {
-      throw new Error(r.message);
-    }
+    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Lookup failed.');
 
     renderItem(r);
     status('Item found.');
   } catch (e) {
-    status(e.message);
+    status(e.message || 'Lookup failed.');
   }
 }
 
 function renderItem(r) {
   currentItem = r;
-
   $('itemPanel').classList.remove('hidden');
   $('itemName').textContent = r.item.name || 'Unnamed item';
 
@@ -445,8 +449,7 @@ function renderItem(r) {
     '<b>Item ID:</b> ' + esc(r.item.id) + '<br>' +
     '<b>Barcode:</b> ' + esc(r.item.barcode) + '<br>' +
     '<b>Entered:</b> ' + esc(r.item.dateEntered) + '<br>' +
-    '<b>On hand:</b> ' + esc(r.item.onHand) + ' ' +
-      esc(r.item.unit || '') + '<br>' +
+    '<b>On hand:</b> ' + esc(r.item.onHand) + ' ' + esc(r.item.unit || '') + '<br>' +
     '<b>Category:</b> ' + esc(r.item.category || '') + '<br>' +
     '<b>Manufacturer:</b> ' + esc(r.item.manufacturer || '') + '<br>' +
     '<b>Location:</b> ' + esc(r.item.location || '') + '<br>' +
@@ -457,8 +460,8 @@ function renderItem(r) {
 
   $('profileView').innerHTML =
     '<h2>Profile</h2>' +
-    (p.photoUrl
-      ? '<img src="' + esc(p.photoUrl) + '" alt="Item photo">'
+    (safeImageUrl(p.photoUrl)
+      ? '<img src="' + esc(safeImageUrl(p.photoUrl)) + '" alt="Item photo">'
       : '') +
     '<p>' +
     '<b>Uses:</b> ' + esc(p.uses || '') + '<br>' +
@@ -478,6 +481,7 @@ function renderItem(r) {
     d.innerHTML =
       '<b>' + esc(b.lot || b.id) + '</b><br>' +
       'Batch ID: ' + esc(b.id) + '<br>' +
+      'Received: ' + esc(b.received || '') + '<br>' +
       'Expires: ' + esc(b.expiration || 'Not entered') + '<br>' +
       'Quantity: ' + esc(b.quantity) + '<br>' +
       'Status: ' + esc(b.status || '') + '<br>' +
@@ -485,44 +489,38 @@ function renderItem(r) {
 
     $('batches').appendChild(d);
 
-    const o = document.createElement('option');
-    o.value = b.id;
-
-    o.textContent =
-      (b.lot || b.id) +
-      ' — ' + b.quantity + ' on hand' +
+    const option = document.createElement('option');
+    option.value = b.id;
+    option.textContent =
+      (b.lot || b.id) + ' — ' + b.quantity + ' on hand' +
       (b.expiration ? ' — exp ' + b.expiration : '');
 
-    if (b.selected) {
-      o.selected = true;
-    }
-
-    $('batchSelect').appendChild(o);
+    if (b.selected) option.selected = true;
+    $('batchSelect').appendChild(option);
   });
 
-  if (r.selectedBatchId) {
-    $('batchSelect').value = r.selectedBatchId;
-  }
+  if (r.selectedBatchId) $('batchSelect').value = r.selectedBatchId;
 
   $('txnType').innerHTML = '';
-
   if (currentPermissions.receive) {
     $('txnType').add(new Option('Receive stock', 'Receive'));
   }
-
   if (currentPermissions.remove) {
     $('txnType').add(new Option('Remove stock', 'Remove'));
   }
 
-  if (currentPermissions.receive || currentPermissions.remove) {
-    $('stockPanel').classList.remove('hidden');
-  } else {
-    $('stockPanel').classList.add('hidden');
-  }
+  $('stockPanel').classList.toggle(
+    'hidden',
+    !(currentPermissions.receive || currentPermissions.remove)
+  );
 
   $('newLot').value = '';
   $('newQuantity').value = '';
   $('newReceived').value = new Date().toISOString().slice(0, 10);
+  $('newExpiration').value = '';
+  $('newSupplier').value = '';
+  $('newLocation').value = r.item.location || '';
+  $('newNotes').value = '';
 
   $('pUses').value = p.uses || '';
   $('pWarnings').value = p.warnings || '';
@@ -544,6 +542,11 @@ function esc(v) {
   });
 }
 
+function safeImageUrl(value) {
+  const s = String(value || '').trim();
+  return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : '';
+}
+
 /* ---------- Stock transactions ---------- */
 
 async function submitTransaction() {
@@ -557,7 +560,6 @@ async function submitTransaction() {
     status('Select a specific batch before changing stock.');
     return;
   }
-
   if (!Number.isSafeInteger(qty) || qty <= 0) {
     status('Enter a positive whole-number quantity.');
     return;
@@ -578,14 +580,15 @@ async function submitTransaction() {
       }
     });
 
-    if (!r.success) {
-      throw new Error(r.message);
-    }
+    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Transaction failed.');
 
+    const barcode = currentItem.item.barcode;
+    $('txnQty').value = '';
+    $('txnReason').value = '';
     status(r.message);
-    await findItem(currentItem.item.barcode);
+    await findItem(barcode);
   } catch (e) {
-    status(e.message);
+    status(e.message || 'Transaction failed.');
   }
 }
 
@@ -595,9 +598,13 @@ async function createBatch() {
   if (!currentItem) return;
 
   const qty = Number($('newQuantity').value);
-
   if (!Number.isSafeInteger(qty) || qty <= 0) {
     status('Enter a positive whole-number quantity.');
+    return;
+  }
+
+  if (!$('newLot').value.trim()) {
+    status('Enter a lot / batch number.');
     return;
   }
 
@@ -619,14 +626,13 @@ async function createBatch() {
       }
     });
 
-    if (!r.success) {
-      throw new Error(r.message);
-    }
+    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Batch creation failed.');
 
+    const barcode = currentItem.item.barcode;
     status(r.message + ' Batch barcode: ' + r.batchBarcode);
-    await findItem(currentItem.item.barcode);
+    await findItem(barcode);
   } catch (e) {
-    status(e.message);
+    status(e.message || 'Batch creation failed.');
   }
 }
 
@@ -636,6 +642,8 @@ async function saveProfile() {
   if (!currentItem) return;
 
   try {
+    status('Saving item profile…');
+
     const r = await api('profileSave', {
       token: token,
       request: {
@@ -649,14 +657,13 @@ async function saveProfile() {
       }
     });
 
-    if (!r.success) {
-      throw new Error(r.message);
-    }
+    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Profile save failed.');
 
+    const barcode = currentItem.item.barcode;
     status(r.message);
-    await findItem(currentItem.item.barcode);
+    await findItem(barcode);
   } catch (e) {
-    status(e.message);
+    status(e.message || 'Profile save failed.');
   }
 }
 
@@ -664,71 +671,62 @@ async function saveProfile() {
 
 async function startCamera() {
   try {
-    if (!scanner) {
-      scanner = new Html5Qrcode('reader');
+    if (!window.isSecureContext) {
+      throw new Error('Camera access requires HTTPS. Open the GitHub Pages website.');
     }
+
+    if (!scanner) scanner = new Html5Qrcode('reader');
 
     const cams = await Html5Qrcode.getCameras();
-
-    if (!cams.length) {
-      throw new Error('No camera was found.');
-    }
+    if (!cams || !cams.length) throw new Error('No camera was found.');
 
     await scanner.start(
       cams[0].id,
-      {
-        fps: 10,
-        qrbox: { width: 250, height: 180 }
-      },
-      function(txt) {
+      { fps: 10, qrbox: { width: 250, height: 180 } },
+      function(text) {
         stopCamera();
-        $('barcode').value = txt;
-        findItem(txt);
+        $('barcode').value = text;
+        findItem(text);
       },
       function() {}
     );
 
     status('Camera scanning.');
   } catch (e) {
-    status('Camera error: ' + e.message);
+    status('Camera error: ' + (e.message || String(e)));
   }
 }
 
 async function stopCamera() {
-  if (scanner) {
-    try {
-      if (scanner.isScanning) {
-        await scanner.stop();
-      }
-    } catch (e) {}
+  if (!scanner) return;
 
-    try {
-      await scanner.clear();
-    } catch (e) {}
-  }
+  try {
+    if (scanner.isScanning) await scanner.stop();
+  } catch (e) {}
+
+  try {
+    await scanner.clear();
+  } catch (e) {}
 }
 
 /* ---------- Owner user management ---------- */
 
 async function loadUsers() {
   try {
-    const r = await api('usersList', { token: token });
+    status('Loading user accounts…');
 
-    if (!r.success) {
-      throw new Error(r.message);
-    }
+    const r = await api('usersList', { token: token });
+    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Could not load users.');
 
     $('usersList').innerHTML = '';
 
-    r.users.forEach(function(u) {
+    (r.users || []).forEach(function(u) {
       const d = document.createElement('div');
       d.className = 'batch';
 
       d.innerHTML =
-        '<b>' + esc(u.displayName) + '</b> — ' +
-        esc(u.email) + '<br>' +
-        'Role: ' + esc(u.role) + ' | ' +
-        (u.active ? 'Active' : 'Inactive') +
+        '<b>' + esc(u.displayName) + '</b> — ' + esc(u.email) + '<br>' +
+        'Role: ' + esc(u.role) + ' | ' + (u.active ? 'Active' : 'Inactive') +
         '<br><button class="secondary" type="button">Edit this account</button>';
 
       d.querySelector('button').onclick = function() {
@@ -737,31 +735,14 @@ async function loadUsers() {
 
       $('usersList').appendChild(d);
     });
+
+    status('User accounts loaded.');
   } catch (e) {
-    status(e.message);
+    status(e.message || 'Could not load users.');
   }
 }
 
 let editingUserEmail = '';
-
-function editUser(u) {
-  editingUserEmail = u.email;
-
-  $('uEmail').value = u.email;
-  $('uEmail').disabled = true;
-
-  $('uName').value = u.displayName;
-  $('uPin').value = '';
-  $('uActive').checked = u.active;
-
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
-    const el = $('perm_' + k);
-
-    if (el) {
-      el.checked = !!u.permissions[k];
-    }
-  });
-}
 
 const PERMISSION_COLUMNS_JS = {
   scan: 'Can scan / look up items',
@@ -773,14 +754,38 @@ const PERMISSION_COLUMNS_JS = {
 
 $('permissionInputs').innerHTML =
   Object.entries(PERMISSION_COLUMNS_JS).map(function(entry) {
-    const k = entry[0];
-    const v = entry[1];
-
     return '<label class="checkline">' +
-      '<input type="checkbox" id="perm_' + k + '"> ' +
-      v +
+      '<input type="checkbox" id="perm_' + entry[0] + '"> ' +
+      entry[1] +
       '</label>';
   }).join('');
+
+function editUser(u) {
+  editingUserEmail = u.email;
+  $('uEmail').value = u.email;
+  $('uEmail').disabled = true;
+  $('uName').value = u.displayName;
+  $('uPin').value = '';
+  $('uActive').checked = u.active;
+
+  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
+    const el = $('perm_' + k);
+    if (el) el.checked = !!(u.permissions && u.permissions[k]);
+  });
+}
+
+function clearUserForm() {
+  editingUserEmail = '';
+  $('uEmail').disabled = false;
+  $('uEmail').value = '';
+  $('uName').value = '';
+  $('uPin').value = '';
+  $('uActive').checked = false;
+
+  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
+    $('perm_' + k).checked = false;
+  });
+}
 
 async function saveUser() {
   const permissions = {};
@@ -790,6 +795,8 @@ async function saveUser() {
   });
 
   try {
+    status('Saving user account…');
+
     const r = await api('userSave', {
       token: token,
       request: {
@@ -801,31 +808,20 @@ async function saveUser() {
       }
     });
 
-    if (!r.success) {
-      throw new Error(r.message);
-    }
+    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Could not save user.');
 
     status(r.message);
-
-    editingUserEmail = '';
-
-    $('uEmail').disabled = false;
-    $('uEmail').value = '';
-    $('uName').value = '';
-    $('uPin').value = '';
-
-    loadUsers();
+    clearUserForm();
+    await loadUsers();
   } catch (e) {
-    status(e.message);
+    status(e.message || 'Could not save user.');
   }
 }
 
 /* ---------- Startup ---------- */
 
 $('pin').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    login();
-  }
+  if (e.key === 'Enter') login();
 });
 
 validate();
