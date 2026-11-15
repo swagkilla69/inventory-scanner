@@ -6,14 +6,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Inventory Scanner</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
+
 <style>
 *{box-sizing:border-box}
 body{font-family:Arial,sans-serif;max-width:620px;margin:20px auto;padding:0 14px;color:#202124;background:#f7f8fa}
 .panel{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
 h1{font-size:24px}
 h2{font-size:19px;margin:4px 0 12px}
+h3{font-size:16px;margin:16px 0 8px}
 label{display:block;font-weight:bold;margin:10px 0 5px}
 input,select,textarea,button{font:inherit;width:100%;padding:11px;border:1px solid #bbb;border-radius:8px;margin:4px 0}
+textarea{min-height:65px;resize:vertical}
 button{background:#1a73e8;color:white;border:0;font-weight:bold;cursor:pointer}
 button.secondary{background:#5f6368}
 button.danger{background:#b3261e}
@@ -29,8 +32,10 @@ small,.muted{color:#666}
 .checkline{display:flex;align-items:center;gap:8px;font-weight:normal}
 .checkline input{width:auto}
 img{max-width:100%;max-height:180px;object-fit:contain}
+.section-note{font-size:13px;color:#666;margin:5px 0 12px}
 </style>
 </head>
+
 <body>
 
 <h1>Inventory Scanner</h1>
@@ -38,10 +43,12 @@ img{max-width:100%;max-height:180px;object-fit:contain}
 
 <section id="loginPanel" class="panel">
   <h2>Sign in</h2>
+
   <label for="pin">Four-digit PIN</label>
   <input id="pin" type="password" inputmode="numeric"
     pattern="[0-9]*" maxlength="4" autocomplete="one-time-code"
     placeholder="••••">
+
   <button id="loginButton" type="button" onclick="login()">Log In</button>
 </section>
 
@@ -63,8 +70,76 @@ img{max-width:100%;max-height:180px;object-fit:contain}
       <button type="button" onclick="startCamera()">Open Camera Scanner</button>
       <button class="secondary" type="button" onclick="stopCamera()">Stop Camera</button>
     </div>
+
     <div id="reader"></div>
   </div>
+
+  <!-- CREATE PRODUCT: Owner and users with Can_Create_Products -->
+
+  <div id="newProductPanel" class="panel hidden">
+    <h2>Create New Product</h2>
+    <p class="section-note">
+      Create the product record first. Stock starts at zero.
+      You can create its batches after saving the product.
+    </p>
+
+    <label for="productName">Product name *</label>
+    <input id="productName" type="text" placeholder="Product name">
+
+    <label for="productBarcode">Product barcode</label>
+    <input id="productBarcode" type="text" placeholder="Scan or enter product barcode">
+
+    <label for="productCategory">Category</label>
+    <input id="productCategory" type="text">
+
+    <label for="productManufacturer">Manufacturer</label>
+    <input id="productManufacturer" type="text">
+
+    <div class="row">
+      <div>
+        <label for="productUnit">Unit</label>
+        <input id="productUnit" type="text" placeholder="Each, bottle, box...">
+      </div>
+      <div>
+        <label for="productReorder">Reorder level</label>
+        <input id="productReorder" type="number" min="0" step="1" value="0">
+      </div>
+    </div>
+
+    <label for="productLocation">Location</label>
+    <input id="productLocation" type="text">
+
+    <label for="productNotes">Notes</label>
+    <textarea id="productNotes"></textarea>
+
+    <h3>Product Profile</h3>
+
+    <label for="productUses">Uses</label>
+    <textarea id="productUses"></textarea>
+
+    <label for="productWarnings">Warnings / contraindications</label>
+    <textarea id="productWarnings"></textarea>
+
+    <label for="productInstructions">Instructions</label>
+    <textarea id="productInstructions"></textarea>
+
+    <label for="productHandling">Special handling</label>
+    <textarea id="productHandling"></textarea>
+
+    <label for="productProfileNotes">Profile notes</label>
+    <textarea id="productProfileNotes"></textarea>
+
+    <label for="productPhoto">Photo URL</label>
+    <input id="productPhoto" type="url" placeholder="https://...">
+
+    <button id="createProductButton" type="button" onclick="submitNewProduct()">
+      Create Product
+    </button>
+
+    <div id="newProductStatus" class="status hidden"></div>
+  </div>
+
+  <!-- ITEM DETAILS -->
 
   <div id="itemPanel" class="panel hidden">
     <div class="itemtitle" id="itemName"></div>
@@ -76,6 +151,7 @@ img{max-width:100%;max-height:180px;object-fit:contain}
 
     <div id="stockPanel" class="hidden">
       <h2>Stock transaction</h2>
+
       <label for="batchSelect">Selected batch</label>
       <select id="batchSelect"></select>
 
@@ -91,8 +167,11 @@ img{max-width:100%;max-height:180px;object-fit:contain}
       <button type="button" onclick="submitTransaction()">Submit transaction</button>
     </div>
 
+    <!-- SCANNERS AND STOCK MANAGERS CAN CREATE BATCHES IF PERMITTED -->
+
     <div id="newBatchPanel" class="hidden">
       <h2>Create new batch</h2>
+
       <label for="newLot">Lot / batch number</label>
       <input id="newLot">
 
@@ -101,6 +180,7 @@ img{max-width:100%;max-height:180px;object-fit:contain}
           <label for="newReceived">Date received</label>
           <input id="newReceived" type="date">
         </div>
+
         <div>
           <label for="newExpiration">Expiration date</label>
           <input id="newExpiration" type="date">
@@ -124,6 +204,7 @@ img{max-width:100%;max-height:180px;object-fit:contain}
 
     <div id="profilePanel" class="hidden">
       <h2>Edit item profile</h2>
+
       <label for="pUses">Uses</label>
       <textarea id="pUses"></textarea>
 
@@ -146,11 +227,15 @@ img{max-width:100%;max-height:180px;object-fit:contain}
     </div>
   </div>
 
+  <!-- OWNER USER MANAGEMENT -->
+
   <div id="usersPanel" class="panel hidden">
     <h2>Owner — User Management</h2>
+
     <div id="usersList"></div>
 
     <h2>Add / edit account</h2>
+
     <label for="uEmail">Email address (account contact, not used to log in)</label>
     <input id="uEmail" type="email">
 
@@ -165,8 +250,16 @@ img{max-width:100%;max-height:180px;object-fit:contain}
       Account active
     </label>
 
+    <h3>Permissions</h3>
+    <p class="section-note">
+      A Stock Manager is an account with Create Products enabled.
+      A Scanner should have Create Products disabled but may have Create Batches enabled.
+    </p>
+
     <div id="permissionInputs"></div>
+
     <button type="button" onclick="saveUser()">Save user</button>
+    <button type="button" class="secondary" onclick="clearUserForm()">Clear form / Add new user</button>
   </div>
 
 </section>
@@ -194,8 +287,10 @@ function status(message) {
 
 function requestId() {
   const bytes = new Uint8Array(16);
+
   if (window.crypto && window.crypto.getRandomValues) {
     window.crypto.getRandomValues(bytes);
+
     return Array.from(bytes).map(function(b) {
       return b.toString(16).padStart(2, '0');
     }).join('');
@@ -206,27 +301,26 @@ function requestId() {
   });
 }
 
-/*
- * Apps Script JSONP communication.
- * The timeout is extended because PIN verification hashes every active
- * account using the existing 10,000-iteration hash algorithm.
- */
+/* ---------- Apps Script JSONP communication ---------- */
+
 function api(action, data = {}) {
   return new Promise(function(resolve, reject) {
     const nonce = requestId();
     const callbackName = 'inventoryCallback_' + nonce;
     const script = document.createElement('script');
+
     let finished = false;
 
     const timer = setTimeout(function() {
       finish(new Error(
         'The server did not respond within 120 seconds. ' +
-        'Check Apps Script Executions for the login request.'
+        'Check Apps Script Executions for the request.'
       ));
     }, 120000);
 
     function finish(error, result) {
       if (finished) return;
+
       finished = true;
       clearTimeout(timer);
 
@@ -286,6 +380,7 @@ async function login() {
   if (requestInProgress) return;
 
   const pin = $('pin').value.trim();
+
   if (!/^\d{4}$/.test(pin)) {
     status('Enter your four-digit PIN.');
     return;
@@ -303,14 +398,18 @@ async function login() {
       throw new Error(r && r.message ? r.message : 'Login failed.');
     }
 
-    if (!r.token) throw new Error('The server did not return a session token.');
+    if (!r.token) {
+      throw new Error('The server did not return a session token.');
+    }
 
     token = r.token;
     sessionStorage.setItem(SESSION_KEY, token);
+
     currentUser = r;
     currentPermissions = r.permissions || {};
 
     $('pin').value = '';
+
     showApp();
     status('Signed in successfully.');
   } catch (e) {
@@ -331,17 +430,23 @@ async function validate() {
     status('Checking saved session…');
 
     const r = await api('validate', { token: token });
-    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Session is invalid.');
+
+    if (!r || !r.success) {
+      throw new Error(r && r.message ? r.message : 'Session is invalid.');
+    }
 
     currentUser = r;
     currentPermissions = r.permissions || {};
+
     showApp();
     status('Session restored.');
   } catch (e) {
     sessionStorage.removeItem(SESSION_KEY);
+
     token = '';
     currentUser = null;
     currentPermissions = {};
+
     showLogin();
     status(e.message || 'Please log in.');
   }
@@ -369,6 +474,11 @@ function showApp() {
     !currentPermissions.createBatches
   );
 
+  $('newProductPanel').classList.toggle(
+    'hidden',
+    !currentPermissions.createProducts
+  );
+
   $('profilePanel').classList.toggle(
     'hidden',
     !currentPermissions.editProfiles
@@ -379,452 +489,6 @@ function showApp() {
     !currentPermissions.manageUsers
   );
 
-  if (currentPermissions.manageUsers) loadUsers();
-}
-
-async function logout() {
-  const oldToken = token;
-
-  token = '';
-  sessionStorage.removeItem(SESSION_KEY);
-  currentUser = null;
-  currentItem = null;
-  currentPermissions = {};
-
-  await stopCamera();
-
-  $('itemPanel').classList.add('hidden');
-  showLogin();
-
-  if (oldToken) {
-    try {
-      await api('logout', { token: oldToken });
-    } catch (e) {
-      // Local logout remains effective if the server cannot be reached.
-    }
+  if (currentPermissions.manageUsers) {
+    loadUsers();
   }
-
-  status('Logged out.');
-}
-
-/* ---------- Item lookup ---------- */
-
-async function findItem(value) {
-  const barcode = String(value || $('barcode').value).trim();
-
-  if (!barcode) {
-    status('Enter a barcode.');
-    return;
-  }
-
-  if (!currentPermissions.scan) {
-    status('Your account cannot scan or look up items.');
-    return;
-  }
-
-  try {
-    status('Looking up item…');
-
-    const r = await api('lookup', {
-      barcode: barcode,
-      token: token
-    });
-
-    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Lookup failed.');
-
-    renderItem(r);
-    status('Item found.');
-  } catch (e) {
-    status(e.message || 'Lookup failed.');
-  }
-}
-
-function renderItem(r) {
-  currentItem = r;
-  $('itemPanel').classList.remove('hidden');
-  $('itemName').textContent = r.item.name || 'Unnamed item';
-
-  $('itemDetails').innerHTML =
-    '<p>' +
-    '<b>Item ID:</b> ' + esc(r.item.id) + '<br>' +
-    '<b>Barcode:</b> ' + esc(r.item.barcode) + '<br>' +
-    '<b>Entered:</b> ' + esc(r.item.dateEntered) + '<br>' +
-    '<b>On hand:</b> ' + esc(r.item.onHand) + ' ' + esc(r.item.unit || '') + '<br>' +
-    '<b>Category:</b> ' + esc(r.item.category || '') + '<br>' +
-    '<b>Manufacturer:</b> ' + esc(r.item.manufacturer || '') + '<br>' +
-    '<b>Location:</b> ' + esc(r.item.location || '') + '<br>' +
-    '<b>Notes:</b> ' + esc(r.item.notes || '') +
-    '</p>';
-
-  const p = r.profile || {};
-
-  $('profileView').innerHTML =
-    '<h2>Profile</h2>' +
-    (safeImageUrl(p.photoUrl)
-      ? '<img src="' + esc(safeImageUrl(p.photoUrl)) + '" alt="Item photo">'
-      : '') +
-    '<p>' +
-    '<b>Uses:</b> ' + esc(p.uses || '') + '<br>' +
-    '<b>Warnings:</b> ' + esc(p.warnings || '') + '<br>' +
-    '<b>Instructions:</b> ' + esc(p.instructions || '') + '<br>' +
-    '<b>Special handling:</b> ' + esc(p.handling || '') + '<br>' +
-    '<b>Profile notes:</b> ' + esc(p.notes || '') +
-    '</p>';
-
-  $('batches').innerHTML = '';
-  $('batchSelect').innerHTML = '';
-
-  (r.batches || []).forEach(function(b) {
-    const d = document.createElement('div');
-    d.className = 'batch';
-
-    d.innerHTML =
-      '<b>' + esc(b.lot || b.id) + '</b><br>' +
-      'Batch ID: ' + esc(b.id) + '<br>' +
-      'Received: ' + esc(b.received || '') + '<br>' +
-      'Expires: ' + esc(b.expiration || 'Not entered') + '<br>' +
-      'Quantity: ' + esc(b.quantity) + '<br>' +
-      'Status: ' + esc(b.status || '') + '<br>' +
-      'Barcode: ' + esc(b.barcode || '');
-
-    $('batches').appendChild(d);
-
-    const option = document.createElement('option');
-    option.value = b.id;
-    option.textContent =
-      (b.lot || b.id) + ' — ' + b.quantity + ' on hand' +
-      (b.expiration ? ' — exp ' + b.expiration : '');
-
-    if (b.selected) option.selected = true;
-    $('batchSelect').appendChild(option);
-  });
-
-  if (r.selectedBatchId) $('batchSelect').value = r.selectedBatchId;
-
-  $('txnType').innerHTML = '';
-  if (currentPermissions.receive) {
-    $('txnType').add(new Option('Receive stock', 'Receive'));
-  }
-  if (currentPermissions.remove) {
-    $('txnType').add(new Option('Remove stock', 'Remove'));
-  }
-
-  $('stockPanel').classList.toggle(
-    'hidden',
-    !(currentPermissions.receive || currentPermissions.remove)
-  );
-
-  $('newLot').value = '';
-  $('newQuantity').value = '';
-  $('newReceived').value = new Date().toISOString().slice(0, 10);
-  $('newExpiration').value = '';
-  $('newSupplier').value = '';
-  $('newLocation').value = r.item.location || '';
-  $('newNotes').value = '';
-
-  $('pUses').value = p.uses || '';
-  $('pWarnings').value = p.warnings || '';
-  $('pInstructions').value = p.instructions || '';
-  $('pHandling').value = p.handling || '';
-  $('pNotes').value = p.notes || '';
-  $('pPhoto').value = p.photoUrl || '';
-}
-
-function esc(v) {
-  return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) {
-    return {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[c];
-  });
-}
-
-function safeImageUrl(value) {
-  const s = String(value || '').trim();
-  return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : '';
-}
-
-/* ---------- Stock transactions ---------- */
-
-async function submitTransaction() {
-  if (!currentItem) return;
-
-  const type = $('txnType').value;
-  const qty = Number($('txnQty').value);
-  const batchId = $('batchSelect').value;
-
-  if (!batchId) {
-    status('Select a specific batch before changing stock.');
-    return;
-  }
-  if (!Number.isSafeInteger(qty) || qty <= 0) {
-    status('Enter a positive whole-number quantity.');
-    return;
-  }
-
-  try {
-    status('Saving stock transaction…');
-
-    const r = await api('transaction', {
-      token: token,
-      request: {
-        itemId: currentItem.item.id,
-        batchId: batchId,
-        type: type,
-        quantity: qty,
-        reason: $('txnReason').value,
-        requestId: requestId()
-      }
-    });
-
-    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Transaction failed.');
-
-    const barcode = currentItem.item.barcode;
-    $('txnQty').value = '';
-    $('txnReason').value = '';
-    status(r.message);
-    await findItem(barcode);
-  } catch (e) {
-    status(e.message || 'Transaction failed.');
-  }
-}
-
-/* ---------- New batch ---------- */
-
-async function createBatch() {
-  if (!currentItem) return;
-
-  const qty = Number($('newQuantity').value);
-  if (!Number.isSafeInteger(qty) || qty <= 0) {
-    status('Enter a positive whole-number quantity.');
-    return;
-  }
-
-  if (!$('newLot').value.trim()) {
-    status('Enter a lot / batch number.');
-    return;
-  }
-
-  try {
-    status('Creating batch…');
-
-    const r = await api('newBatch', {
-      token: token,
-      request: {
-        itemId: currentItem.item.id,
-        lot: $('newLot').value,
-        receivedDate: $('newReceived').value,
-        expirationDate: $('newExpiration').value,
-        quantity: qty,
-        supplier: $('newSupplier').value,
-        location: $('newLocation').value,
-        notes: $('newNotes').value,
-        requestId: requestId()
-      }
-    });
-
-    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Batch creation failed.');
-
-    const barcode = currentItem.item.barcode;
-    status(r.message + ' Batch barcode: ' + r.batchBarcode);
-    await findItem(barcode);
-  } catch (e) {
-    status(e.message || 'Batch creation failed.');
-  }
-}
-
-/* ---------- Item profile ---------- */
-
-async function saveProfile() {
-  if (!currentItem) return;
-
-  try {
-    status('Saving item profile…');
-
-    const r = await api('profileSave', {
-      token: token,
-      request: {
-        itemId: currentItem.item.id,
-        uses: $('pUses').value,
-        warnings: $('pWarnings').value,
-        instructions: $('pInstructions').value,
-        handling: $('pHandling').value,
-        notes: $('pNotes').value,
-        photoUrl: $('pPhoto').value
-      }
-    });
-
-    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Profile save failed.');
-
-    const barcode = currentItem.item.barcode;
-    status(r.message);
-    await findItem(barcode);
-  } catch (e) {
-    status(e.message || 'Profile save failed.');
-  }
-}
-
-/* ---------- Camera scanner ---------- */
-
-async function startCamera() {
-  try {
-    if (!window.isSecureContext) {
-      throw new Error('Camera access requires HTTPS. Open the GitHub Pages website.');
-    }
-
-    if (!scanner) scanner = new Html5Qrcode('reader');
-
-    const cams = await Html5Qrcode.getCameras();
-    if (!cams || !cams.length) throw new Error('No camera was found.');
-
-    await scanner.start(
-      cams[0].id,
-      { fps: 10, qrbox: { width: 250, height: 180 } },
-      function(text) {
-        stopCamera();
-        $('barcode').value = text;
-        findItem(text);
-      },
-      function() {}
-    );
-
-    status('Camera scanning.');
-  } catch (e) {
-    status('Camera error: ' + (e.message || String(e)));
-  }
-}
-
-async function stopCamera() {
-  if (!scanner) return;
-
-  try {
-    if (scanner.isScanning) await scanner.stop();
-  } catch (e) {}
-
-  try {
-    await scanner.clear();
-  } catch (e) {}
-}
-
-/* ---------- Owner user management ---------- */
-
-async function loadUsers() {
-  try {
-    status('Loading user accounts…');
-
-    const r = await api('usersList', { token: token });
-    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Could not load users.');
-
-    $('usersList').innerHTML = '';
-
-    (r.users || []).forEach(function(u) {
-      const d = document.createElement('div');
-      d.className = 'batch';
-
-      d.innerHTML =
-        '<b>' + esc(u.displayName) + '</b> — ' + esc(u.email) + '<br>' +
-        'Role: ' + esc(u.role) + ' | ' + (u.active ? 'Active' : 'Inactive') +
-        '<br><button class="secondary" type="button">Edit this account</button>';
-
-      d.querySelector('button').onclick = function() {
-        editUser(u);
-      };
-
-      $('usersList').appendChild(d);
-    });
-
-    status('User accounts loaded.');
-  } catch (e) {
-    status(e.message || 'Could not load users.');
-  }
-}
-
-let editingUserEmail = '';
-
-const PERMISSION_COLUMNS_JS = {
-  scan: 'Can scan / look up items',
-  receive: 'Receive stock',
-  remove: 'Remove stock',
-  createBatches: 'Create new batches',
-  editProfiles: 'Edit item profiles'
-};
-
-$('permissionInputs').innerHTML =
-  Object.entries(PERMISSION_COLUMNS_JS).map(function(entry) {
-    return '<label class="checkline">' +
-      '<input type="checkbox" id="perm_' + entry[0] + '"> ' +
-      entry[1] +
-      '</label>';
-  }).join('');
-
-function editUser(u) {
-  editingUserEmail = u.email;
-  $('uEmail').value = u.email;
-  $('uEmail').disabled = true;
-  $('uName').value = u.displayName;
-  $('uPin').value = '';
-  $('uActive').checked = u.active;
-
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
-    const el = $('perm_' + k);
-    if (el) el.checked = !!(u.permissions && u.permissions[k]);
-  });
-}
-
-function clearUserForm() {
-  editingUserEmail = '';
-  $('uEmail').disabled = false;
-  $('uEmail').value = '';
-  $('uName').value = '';
-  $('uPin').value = '';
-  $('uActive').checked = false;
-
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
-    $('perm_' + k).checked = false;
-  });
-}
-
-async function saveUser() {
-  const permissions = {};
-
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
-    permissions[k] = $('perm_' + k).checked;
-  });
-
-  try {
-    status('Saving user account…');
-
-    const r = await api('userSave', {
-      token: token,
-      request: {
-        email: $('uEmail').value,
-        displayName: $('uName').value,
-        pin: $('uPin').value,
-        active: $('uActive').checked,
-        permissions: permissions
-      }
-    });
-
-    if (!r || !r.success) throw new Error(r && r.message ? r.message : 'Could not save user.');
-
-    status(r.message);
-    clearUserForm();
-    await loadUsers();
-  } catch (e) {
-    status(e.message || 'Could not save user.');
-  }
-}
-
-/* ---------- Startup ---------- */
-
-$('pin').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') login();
-});
-
-validate();
-</script>
-</body>
-</html>
