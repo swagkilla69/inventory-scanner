@@ -1,176 +1,110 @@
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Inventory Scanner</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
 *{box-sizing:border-box}
-body{font-family:Arial,sans-serif;max-width:620px;margin:20px auto;padding:0 14px;color:#202124;background:#f7f8fa}
-.panel{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
-h1{font-size:24px}
+body{font-family:Arial,sans-serif;max-width:650px;margin:20px auto;padding:0 14px;background:#f6f7f9;color:#202124}
+h1{font-size:25px}
 h2{font-size:19px;margin:4px 0 12px}
 h3{font-size:16px;margin:16px 0 8px}
+.panel{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
 label{display:block;font-weight:bold;margin:10px 0 5px}
-input,select,textarea,button{font:inherit;width:100%;padding:11px;border:1px solid #bbb;border-radius:8px;margin:4px 0}
+input,select,textarea,button{width:100%;font:inherit;padding:11px;border:1px solid #bbb;border-radius:8px;margin:4px 0}
 textarea{min-height:65px;resize:vertical}
-button{background:#1a73e8;color:white;border:0;font-weight:bold;cursor:pointer}
+button{border:0;background:#1a73e8;color:white;font-weight:bold;cursor:pointer}
 button.secondary{background:#5f6368}
 button.danger{background:#b3261e}
 button:disabled{opacity:.5;cursor:wait}
-small,.muted{color:#666}
 .row{display:flex;gap:8px}
 .row>*{flex:1;min-width:0}
 .hidden{display:none!important}
-#reader{width:100%;margin-top:12px;overflow:hidden;border-radius:10px}
-#reader video{object-fit:cover}
-#reader__scan_region{background:#111}
-#reader__dashboard{padding:8px}
-#reader__dashboard_section_csr button{width:auto}
-.camera-instructions{font-size:13px;color:#555;margin:8px 0}
-.itemtitle{font-size:21px;font-weight:bold}
-.batch{border:1px solid #ddd;border-radius:8px;padding:10px;margin:8px 0}
-.status{padding:9px;border-radius:8px;background:#eef3fd;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.status{padding:10px;background:#e8f0fe;border-radius:8px;margin:10px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.muted{color:#666;font-size:13px}
+.item-name{font-size:21px;font-weight:bold}
+.batch{border:1px solid #ddd;border-radius:9px;padding:12px;margin:9px 0;background:white}
+.batch.selected-batch{border:3px solid #1a73e8;background:#e8f0fe}
+.selected-label{display:inline-block;background:#1a73e8;color:white;font-weight:bold;font-size:12px;padding:5px 8px;border-radius:5px;margin-bottom:8px}
 .checkline{display:flex;align-items:center;gap:8px;font-weight:normal}
 .checkline input{width:auto}
+#reader{width:100%;overflow:hidden;border-radius:10px;margin-top:10px}
+#reader video{object-fit:cover}
 img{max-width:100%;max-height:180px;object-fit:contain}
-.section-note{font-size:13px;color:#666;margin:5px 0 12px}
-.camera-frame-label{font-weight:bold;text-align:center;margin:10px 0 4px}
 </style>
 </head>
 
 <body>
-
 <h1>Inventory Scanner</h1>
 <div id="status" class="status">Ready.</div>
 
 <section id="loginPanel" class="panel">
   <h2>Sign in</h2>
   <label for="pin">Four-digit PIN</label>
-  <input id="pin" type="password" inputmode="numeric"
-    pattern="[0-9]*" maxlength="4" autocomplete="one-time-code"
-    placeholder="••••">
-  <button id="loginButton" type="button" onclick="login()">Log In</button>
+  <input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="one-time-code" placeholder="••••">
+  <button id="loginButton" onclick="login()">Log In</button>
 </section>
 
-<section id="app" class="hidden">
+<main id="app" class="hidden">
 
-  <div class="panel">
+  <section class="panel">
     <div class="row">
-      <div><b id="welcome"></b></div>
-      <button class="secondary" type="button" onclick="logout()">Log Out</button>
+      <strong id="welcome"></strong>
+      <button class="secondary" onclick="logout()">Log Out</button>
     </div>
 
     <label for="barcode">Enter barcode manually</label>
     <div class="row">
-      <input id="barcode" placeholder="Barcode">
-      <button type="button" onclick="findItem()">Find Item</button>
+      <input id="barcode" placeholder="Item or batch barcode">
+      <button onclick="findItem()">Find Item</button>
     </div>
 
     <div class="row">
-      <button id="startCameraButton" type="button" onclick="startCamera()">Open Camera Scanner</button>
-      <button class="secondary" type="button" onclick="stopCamera()">Stop Camera</button>
+      <button id="startCameraButton" onclick="startCamera()">Open Camera Scanner</button>
+      <button class="secondary" onclick="stopCamera()">Stop Camera</button>
     </div>
 
-    <div id="cameraInstructions" class="camera-instructions hidden">
-      Aim the barcode inside the scanning box. Only codes inside the box are scanned.
-      Keep other nearby barcodes outside the box.
-    </div>
-
-    <div id="reader" class="hidden"></div>
-  </div>
-
-  <div id="newProductPanel" class="panel hidden">
-    <h2>Create New Product</h2>
-    <p class="section-note">
-      Create the product record first. Stock starts at zero.
-      Create batches separately after saving the product.
+    <p id="cameraHelp" class="muted hidden">
+      Point the rear camera at a barcode. The scanner will look up the matching product or batch.
     </p>
+    <div id="reader" class="hidden"></div>
+  </section>
 
-    <label for="productName">Product name *</label>
-    <input id="productName" type="text" placeholder="Product name">
-
-    <label for="productBarcode">Product barcode</label>
-    <input id="productBarcode" type="text" placeholder="Scan or enter product barcode">
-
-    <label for="productCategory">Category</label>
-    <input id="productCategory" type="text">
-
-    <label for="productManufacturer">Manufacturer</label>
-    <input id="productManufacturer" type="text">
-
-    <div class="row">
-      <div>
-        <label for="productUnit">Unit</label>
-        <input id="productUnit" type="text" placeholder="Each, bottle, box...">
-      </div>
-      <div>
-        <label for="productReorder">Reorder level</label>
-        <input id="productReorder" type="number" min="0" step="1" value="0">
-      </div>
-    </div>
-
-    <label for="productLocation">Location</label>
-    <input id="productLocation" type="text">
-
-    <label for="productNotes">Notes</label>
-    <textarea id="productNotes"></textarea>
-
-    <h3>Product Profile</h3>
-
-    <label for="productUses">Uses</label>
-    <textarea id="productUses"></textarea>
-
-    <label for="productWarnings">Warnings / contraindications</label>
-    <textarea id="productWarnings"></textarea>
-
-    <label for="productInstructions">Instructions</label>
-    <textarea id="productInstructions"></textarea>
-
-    <label for="productHandling">Special handling</label>
-    <textarea id="productHandling"></textarea>
-
-    <label for="productProfileNotes">Profile notes</label>
-    <textarea id="productProfileNotes"></textarea>
-
-    <label for="productPhoto">Photo URL</label>
-    <input id="productPhoto" type="url" placeholder="https://...">
-
-    <button id="createProductButton" type="button" onclick="submitNewProduct()">
-      Create Product
-    </button>
-  </div>
-
-  <div id="itemPanel" class="panel hidden">
-    <div class="itemtitle" id="itemName"></div>
+  <section id="itemPanel" class="panel hidden">
+    <div id="itemName" class="item-name"></div>
     <div id="itemDetails"></div>
+
+    <h2>Product Profile</h2>
     <div id="profileView"></div>
 
     <h2>Batches</h2>
+    <p class="muted">A scanned batch is highlighted below. Select a batch before recording a stock transaction.</p>
     <div id="batches"></div>
 
-    <div id="stockPanel" class="hidden">
-      <h2>Stock transaction</h2>
-      <label for="batchSelect">Selected batch</label>
+    <section id="stockPanel" class="hidden">
+      <h2>Stock Transaction</h2>
+      <label for="batchSelect">Select a specific batch</label>
       <select id="batchSelect"></select>
 
-      <label for="txnType">Action</label>
+      <label for="txnType">Transaction</label>
       <select id="txnType"></select>
 
       <label for="txnQty">Quantity</label>
       <input id="txnQty" type="number" min="1" step="1">
 
-      <label for="txnReason">Reason</label>
-      <input id="txnReason" placeholder="Reason">
+      <label for="txnReason">Reason / notes</label>
+      <input id="txnReason" placeholder="Optional">
 
-      <button type="button" onclick="submitTransaction()">Submit transaction</button>
-    </div>
+      <button onclick="submitTransaction()">Record Transaction</button>
+    </section>
 
-    <div id="newBatchPanel" class="hidden">
-      <h2>Create new batch</h2>
+    <section id="newBatchPanel" class="hidden">
+      <h2>Create New Batch</h2>
+
       <label for="newLot">Lot / batch number</label>
       <input id="newLot">
 
@@ -197,11 +131,12 @@ img{max-width:100%;max-height:180px;object-fit:contain}
       <label for="newNotes">Notes</label>
       <textarea id="newNotes"></textarea>
 
-      <button type="button" onclick="createBatch()">Create batch</button>
-    </div>
+      <button onclick="createBatch()">Create Batch</button>
+    </section>
 
-    <div id="profilePanel" class="hidden">
-      <h2>Edit item profile</h2>
+    <section id="profilePanel" class="hidden">
+      <h2>Edit Product Profile</h2>
+
       <label for="pUses">Uses</label>
       <textarea id="pUses"></textarea>
 
@@ -218,137 +153,171 @@ img{max-width:100%;max-height:180px;object-fit:contain}
       <textarea id="pNotes"></textarea>
 
       <label for="pPhoto">Photo URL</label>
-      <input id="pPhoto">
+      <input id="pPhoto" type="url">
 
-      <button type="button" onclick="saveProfile()">Save profile</button>
+      <button onclick="saveProfile()">Save Profile</button>
+    </section>
+  </section>
+
+  <section id="newProductPanel" class="panel hidden">
+    <h2>Create New Product</h2>
+    <p class="muted">New products start with zero stock. Add stock by creating a batch afterward.</p>
+
+    <label for="productName">Product name *</label>
+    <input id="productName">
+
+    <label for="productBarcode">Product barcode</label>
+    <input id="productBarcode">
+
+    <label for="productCategory">Category</label>
+    <input id="productCategory">
+
+    <label for="productManufacturer">Manufacturer</label>
+    <input id="productManufacturer">
+
+    <div class="row">
+      <div>
+        <label for="productUnit">Unit</label>
+        <input id="productUnit" placeholder="Each, bottle, box">
+      </div>
+      <div>
+        <label for="productReorder">Reorder level</label>
+        <input id="productReorder" type="number" min="0" step="1" value="0">
+      </div>
     </div>
-  </div>
 
-  <div id="usersPanel" class="panel hidden">
-    <h2>Owner — User Management</h2>
+    <label for="productLocation">Location</label>
+    <input id="productLocation">
+
+    <label for="productNotes">Notes</label>
+    <textarea id="productNotes"></textarea>
+
+    <h3>Product Profile</h3>
+
+    <label for="productUses">Uses</label>
+    <textarea id="productUses"></textarea>
+
+    <label for="productWarnings">Warnings / contraindications</label>
+    <textarea id="productWarnings"></textarea>
+
+    <label for="productInstructions">Instructions</label>
+    <textarea id="productInstructions"></textarea>
+
+    <label for="productHandling">Special handling</label>
+    <textarea id="productHandling"></textarea>
+
+    <label for="productProfileNotes">Profile notes</label>
+    <textarea id="productProfileNotes"></textarea>
+
+    <label for="productPhoto">Photo URL</label>
+    <input id="productPhoto" type="url">
+
+    <button id="createProductButton" onclick="createProduct()">Create Product</button>
+  </section>
+
+  <section id="usersPanel" class="panel hidden">
+    <h2>User Management</h2>
     <div id="usersList"></div>
 
-    <h2>Add / edit account</h2>
-    <label for="uEmail">Email address (account contact, not used to log in)</label>
+    <h3>Add / Edit User</h3>
+
+    <label for="uEmail">Email (not used to log in)</label>
     <input id="uEmail" type="email">
 
     <label for="uName">Display name</label>
     <input id="uName">
 
-    <label for="uPin">PIN (leave blank to keep existing PIN)</label>
-    <input id="uPin" inputmode="numeric" maxlength="4" type="password">
+    <label for="uPin">Four-digit PIN (leave blank to keep existing)</label>
+    <input id="uPin" type="password" inputmode="numeric" maxlength="4">
 
     <label class="checkline">
-      <input id="uActive" type="checkbox">
-      Account active
+      <input id="uActive" type="checkbox"> Account active
     </label>
 
     <h3>Permissions</h3>
-    <p class="section-note">
-      Enable Create Products for a Stock Manager.
-      Leave it disabled for a Scanner. Create Batches is separate.
-    </p>
     <div id="permissionInputs"></div>
 
-    <button type="button" onclick="saveUser()">Save user</button>
-    <button type="button" class="secondary" onclick="clearUserForm()">Clear form / Add new user</button>
-  </div>
+    <button onclick="saveUser()">Save User</button>
+    <button class="secondary" onclick="clearUserForm()">Clear Form</button>
+  </section>
 
-</section>
+</main>
 
 <script>
 'use strict';
 
+/* ---------- Configuration ---------- */
+
 const API_URL =
-  'https://script.google.com/macros/s/AKfycbyLBxzGHD23XGf5stPlHvWZ2E_Rvo6Bg0i23bcmtY2eLHAb9iRTA3NEHOByaNaCwCTuCg/exec';
-
-const SESSION_KEY = 'inventory_session';
-
-let token = sessionStorage.getItem(SESSION_KEY) || '';
-let currentUser = null;
-let currentItem = null;
-let scanner = null;
-let currentPermissions = {};
-let requestInProgress = false;
-let cameraStarting = false;
-let cameraStopping = false;
-let cameraResultHandled = false;
+'https://script.google.com/macros/s/AKfycbyLBxzGHD23XGf5stPlHvWZ2E_Rvo6Bg0i23bcmtY2eLHAb9iRTA3NEHOByaNaCwCTuCg/exec';
 
 const $ = id => document.getElementById(id);
 
-function status(message) {
+let token = sessionStorage.getItem('inventory_session') || '';
+let currentUser = null;
+let permissions = {};
+let currentItem = null;
+let scanner = null;
+let cameraStarting = false;
+let cameraStopping = false;
+let scanHandled = false;
+let busy = false;
+
+function showStatus(message) {
   $('status').textContent = String(message || '');
 }
 
-function requestId() {
+function makeId() {
   const bytes = new Uint8Array(16);
-
-  if (window.crypto && window.crypto.getRandomValues) {
-    window.crypto.getRandomValues(bytes);
-
-    return Array.from(bytes).map(function(b) {
-      return b.toString(16).padStart(2, '0');
-    }).join('');
-  }
-
-  return 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.replace(/x/g, function() {
-    return Math.floor(Math.random() * 16).toString(16);
-  });
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(x => x.toString(16).padStart(2,'0')).join('');
 }
 
-/* ---------- Apps Script JSONP communication ---------- */
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  })[c]);
+}
+
+function safePhoto(value) {
+  const s = String(value || '').trim();
+  return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : '';
+}
+
+/* ---------- API communication: Apps Script JSONP ---------- */
 
 function api(action, data = {}) {
-  return new Promise(function(resolve, reject) {
-    const nonce = requestId();
-    const callbackName = 'inventoryCallback_' + nonce;
+  return new Promise((resolve, reject) => {
+    const nonce = makeId();
+    const callback = 'inventoryCallback_' + nonce;
     const script = document.createElement('script');
-    let finished = false;
+    let complete = false;
 
-    const timer = setTimeout(function() {
-      finish(new Error(
-        'The server did not respond within 120 seconds. ' +
-        'Check Apps Script Executions for the request.'
-      ));
-    }, 120000);
+    const timeout = setTimeout(() => finish(
+      new Error('Server timed out. Check the Apps Script deployment and Executions page.')
+    ), 60000);
 
     function finish(error, result) {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-
-      try {
-        delete window[callbackName];
-      } catch (e) {
-        window[callbackName] = undefined;
-      }
-
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-
+      if (complete) return;
+      complete = true;
+      clearTimeout(timeout);
+      try { delete window[callback]; } catch(e) { window[callback] = undefined; }
+      script.remove();
       if (error) reject(error);
       else resolve(result);
     }
 
-    window[callbackName] = function(message) {
-      if (!message || message.nonce !== nonce) {
-        finish(new Error('The server returned an invalid response.'));
+    window[callback] = response => {
+      if (!response || response.nonce !== nonce) {
+        finish(new Error('Invalid server response.'));
         return;
       }
-
-      finish(null, message.result || {
-        success: false,
-        message: 'The server returned an empty response.'
-      });
+      finish(null, response.result);
     };
 
-    script.onerror = function() {
-      finish(new Error(
-        'Could not load the Apps Script response. ' +
-        'Check that the web app is deployed for access by anyone.'
-      ));
-    };
+    script.onerror = () => finish(
+      new Error('Could not reach Apps Script. Check the web app deployment access.')
+    );
 
     const payload = JSON.stringify({
       action: action,
@@ -356,92 +325,75 @@ function api(action, data = {}) {
       nonce: nonce
     });
 
-    const separator = API_URL.includes('?') ? '&' : '?';
-
-    script.src = API_URL + separator +
-      'payload=' + encodeURIComponent(payload) +
-      '&callback=' + encodeURIComponent(callbackName) +
-      '&cacheBust=' + Date.now();
+    script.src = API_URL +
+      '?payload=' + encodeURIComponent(payload) +
+      '&callback=' + encodeURIComponent(callback) +
+      '&_=' + Date.now();
 
     document.head.appendChild(script);
   });
 }
 
-/* ---------- Login and session ---------- */
+/* ---------- Authentication ---------- */
 
 async function login() {
-  if (requestInProgress) return;
+  if (busy) return;
 
   const pin = $('pin').value.trim();
-
   if (!/^\d{4}$/.test(pin)) {
-    status('Enter your four-digit PIN.');
+    showStatus('Enter your four-digit PIN.');
     return;
   }
 
-  requestInProgress = true;
+  busy = true;
   $('loginButton').disabled = true;
 
   try {
-    status('Signing in. Please wait…');
+    showStatus('Signing in…');
+    const r = await api('login', {pin: pin});
 
-    const r = await api('login', { pin: pin });
-
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Login failed.');
-    }
-
-    if (!r.token) {
-      throw new Error('The server did not return a session token.');
-    }
+    if (!r || !r.success) throw new Error(r?.message || 'Login failed.');
+    if (!r.token) throw new Error('The server did not return a session token.');
 
     token = r.token;
-    sessionStorage.setItem(SESSION_KEY, token);
+    sessionStorage.setItem('inventory_session', token);
     currentUser = r;
-    currentPermissions = r.permissions || {};
+    permissions = r.permissions || {};
 
     $('pin').value = '';
-    showApp();
-    status('Signed in successfully.');
+    openApp();
+    showStatus('Signed in successfully.');
 
-  } catch (e) {
-    status(e.message || 'Login failed.');
-
+  } catch(e) {
+    showStatus(e.message || 'Login failed.');
   } finally {
-    requestInProgress = false;
+    busy = false;
     $('loginButton').disabled = false;
   }
 }
 
-async function validate() {
+async function restoreSession() {
   if (!token) {
     showLogin();
     return;
   }
 
   try {
-    status('Checking saved session…');
+    showStatus('Checking session…');
+    const r = await api('validate', {token: token});
 
-    const r = await api('validate', { token: token });
-
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Session is invalid.');
-    }
+    if (!r || !r.success) throw new Error(r?.message || 'Session expired.');
 
     currentUser = r;
-    currentPermissions = r.permissions || {};
+    permissions = r.permissions || {};
+    openApp();
+    showStatus('Session restored.');
 
-    showApp();
-    status('Session restored.');
-
-  } catch (e) {
-    sessionStorage.removeItem(SESSION_KEY);
+  } catch(e) {
     token = '';
-    currentUser = null;
-    currentPermissions = {};
-
+    sessionStorage.removeItem('inventory_session');
     showLogin();
-    status(e.message || 'Please log in.');
+    showStatus(e.message || 'Please log in.');
   }
 }
 
@@ -450,191 +402,116 @@ function showLogin() {
   $('app').classList.add('hidden');
 }
 
-function showApp() {
+function openApp() {
   $('loginPanel').classList.add('hidden');
   $('app').classList.remove('hidden');
 
   $('welcome').textContent =
     'Logged in as ' + (currentUser.displayName || 'User');
 
-  $('stockPanel').classList.toggle(
-    'hidden',
-    !(currentPermissions.receive || currentPermissions.remove)
-  );
+  $('startCameraButton').disabled = !permissions.scan;
 
-  $('newBatchPanel').classList.toggle(
-    'hidden',
-    !currentPermissions.createBatches
-  );
+  $('newProductPanel').classList.toggle('hidden', !permissions.createProducts);
+  $('newBatchPanel').classList.add('hidden');
+  $('profilePanel').classList.add('hidden');
+  $('stockPanel').classList.add('hidden');
+  $('usersPanel').classList.toggle('hidden', !permissions.manageUsers);
 
-  $('newProductPanel').classList.toggle(
-    'hidden',
-    !currentPermissions.createProducts
-  );
-
-  $('profilePanel').classList.toggle(
-    'hidden',
-    !currentPermissions.editProfiles
-  );
-
-  $('usersPanel').classList.toggle(
-    'hidden',
-    !currentPermissions.manageUsers
-  );
-
-  $('startCameraButton').disabled = !currentPermissions.scan;
-
-  if (currentPermissions.manageUsers) {
-    loadUsers();
-  }
+  if (permissions.manageUsers) loadUsers();
 }
 
 async function logout() {
   const oldToken = token;
-
   await stopCamera();
 
   token = '';
-  sessionStorage.removeItem(SESSION_KEY);
   currentUser = null;
   currentItem = null;
-  currentPermissions = {};
+  permissions = {};
 
+  sessionStorage.removeItem('inventory_session');
   $('itemPanel').classList.add('hidden');
   showLogin();
 
   if (oldToken) {
-    try {
-      await api('logout', { token: oldToken });
-    } catch (e) {}
+    try { await api('logout', {token: oldToken}); } catch(e) {}
   }
 
-  status('Logged out.');
+  showStatus('Logged out.');
 }
 
-/* ---------- Item lookup ---------- */
+/* ---------- Barcode lookup and batch display ---------- */
 
 async function findItem(value) {
   const barcode = String(value || $('barcode').value).trim();
 
   if (!barcode) {
-    status('Enter a barcode.');
+    showStatus('Enter a barcode.');
     return;
   }
 
-  if (!currentPermissions.scan) {
-    status('Your account cannot scan or look up items.');
+  if (!permissions.scan) {
+    showStatus('Your account does not have permission to scan.');
     return;
   }
 
   try {
-    status('Looking up item…');
+    showStatus('Looking up barcode…');
 
     const r = await api('lookup', {
       barcode: barcode,
       token: token
     });
 
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Lookup failed.');
-    }
+    if (!r || !r.success) throw new Error(r?.message || 'Item not found.');
 
-    renderItem(r);
-    status('Item found.');
+    displayItem(r);
+    showStatus(
+      r.scannedType === 'batch'
+        ? 'Batch barcode found. The matching batch is highlighted.'
+        : 'Product found.'
+    );
 
-  } catch (e) {
-    status(e.message || 'Lookup failed.');
+  } catch(e) {
+    showStatus(e.message || 'Lookup failed.');
   }
 }
 
-function renderItem(r) {
+function displayItem(r) {
   currentItem = r;
 
   $('itemPanel').classList.remove('hidden');
-  $('itemName').textContent = r.item.name || 'Unnamed item';
+  $('itemName').textContent = r.item.name || 'Unnamed product';
 
   $('itemDetails').innerHTML =
-    '<p>' +
-    '<b>Item ID:</b> ' + esc(r.item.id) + '<br>' +
-    '<b>Barcode:</b> ' + esc(r.item.barcode) + '<br>' +
-    '<b>Entered:</b> ' + esc(r.item.dateEntered) + '<br>' +
-    '<b>On hand:</b> ' + esc(r.item.onHand) + ' ' + esc(r.item.unit || '') + '<br>' +
-    '<b>Category:</b> ' + esc(r.item.category || '') + '<br>' +
-    '<b>Manufacturer:</b> ' + esc(r.item.manufacturer || '') + '<br>' +
-    '<b>Location:</b> ' + esc(r.item.location || '') + '<br>' +
-    '<b>Notes:</b> ' + esc(r.item.notes || '') +
-    '</p>';
+    '<p><b>Item ID:</b> ' + escapeHtml(r.item.id) + '<br>' +
+    '<b>Product barcode:</b> ' + escapeHtml(r.item.barcode) + '<br>' +
+    '<b>Date entered:</b> ' + escapeHtml(r.item.dateEntered) + '<br>' +
+    '<b>On hand:</b> ' + escapeHtml(r.item.onHand) + ' ' + escapeHtml(r.item.unit || '') + '<br>' +
+    '<b>Category:</b> ' + escapeHtml(r.item.category || '') + '<br>' +
+    '<b>Manufacturer:</b> ' + escapeHtml(r.item.manufacturer || '') + '<br>' +
+    '<b>Location:</b> ' + escapeHtml(r.item.location || '') + '<br>' +
+    '<b>Notes:</b> ' + escapeHtml(r.item.notes || '') + '</p>';
 
   const p = r.profile || {};
+  const photo = safePhoto(p.photoUrl);
 
   $('profileView').innerHTML =
-    '<h2>Profile</h2>' +
-    (safeImageUrl(p.photoUrl)
-      ? '<img src="' + esc(safeImageUrl(p.photoUrl)) + '" alt="Item photo">'
-      : '') +
-    '<p>' +
-    '<b>Uses:</b> ' + esc(p.uses || '') + '<br>' +
-    '<b>Warnings:</b> ' + esc(p.warnings || '') + '<br>' +
-    '<b>Instructions:</b> ' + esc(p.instructions || '') + '<br>' +
-    '<b>Special handling:</b> ' + esc(p.handling || '') + '<br>' +
-    '<b>Profile notes:</b> ' + esc(p.notes || '') +
-    '</p>';
+    (photo ? '<img src="' + escapeHtml(photo) + '" alt="Product photo"><br>' : '') +
+    '<b>Uses:</b> ' + escapeHtml(p.uses || '') + '<br>' +
+    '<b>Warnings:</b> ' + escapeHtml(p.warnings || '') + '<br>' +
+    '<b>Instructions:</b> ' + escapeHtml(p.instructions || '') + '<br>' +
+    '<b>Special handling:</b> ' + escapeHtml(p.handling || '') + '<br>' +
+    '<b>Profile notes:</b> ' + escapeHtml(p.notes || '');
 
-  $('batches').innerHTML = '';
-  $('batchSelect').innerHTML = '';
-
-  (r.batches || []).forEach(function(b) {
-    const d = document.createElement('div');
-    d.className = 'batch';
-
-    d.innerHTML =
-      '<b>' + esc(b.lot || b.id) + '</b><br>' +
-      'Batch ID: ' + esc(b.id) + '<br>' +
-      'Received: ' + esc(b.received || '') + '<br>' +
-      'Expires: ' + esc(b.expiration || 'Not entered') + '<br>' +
-      'Quantity: ' + esc(b.quantity) + '<br>' +
-      'Status: ' + esc(b.status || '') + '<br>' +
-      'Barcode: ' + esc(b.barcode || '');
-
-    $('batches').appendChild(d);
-
-    const option = document.createElement('option');
-    option.value = b.id;
-    option.textContent =
-      (b.lot || b.id) + ' — ' + b.quantity + ' on hand' +
-      (b.expiration ? ' — exp ' + b.expiration : '');
-
-    if (b.selected) option.selected = true;
-
-    $('batchSelect').appendChild(option);
-  });
-
-  if (r.selectedBatchId) {
-    $('batchSelect').value = r.selectedBatchId;
-  }
-
-  $('txnType').innerHTML = '';
-
-  if (currentPermissions.receive) {
-    $('txnType').add(new Option('Receive stock', 'Receive'));
-  }
-
-  if (currentPermissions.remove) {
-    $('txnType').add(new Option('Remove stock', 'Remove'));
-  }
+  displayBatches(r);
 
   $('stockPanel').classList.toggle(
-    'hidden',
-    !(currentPermissions.receive || currentPermissions.remove)
+    'hidden', !(permissions.receive || permissions.remove)
   );
 
-  $('newLot').value = '';
-  $('newQuantity').value = '';
-  $('newReceived').value = new Date().toISOString().slice(0, 10);
-  $('newExpiration').value = '';
-  $('newSupplier').value = '';
-  $('newLocation').value = r.item.location || '';
-  $('newNotes').value = '';
+  $('newBatchPanel').classList.toggle('hidden', !permissions.createBatches);
+  $('profilePanel').classList.toggle('hidden', !permissions.editProfiles);
 
   $('pUses').value = p.uses || '';
   $('pWarnings').value = p.warnings || '';
@@ -642,30 +519,167 @@ function renderItem(r) {
   $('pHandling').value = p.handling || '';
   $('pNotes').value = p.notes || '';
   $('pPhoto').value = p.photoUrl || '';
+
+  $('newReceived').value = new Date().toISOString().slice(0,10);
+  $('newLocation').value = r.item.location || '';
 }
 
-function esc(v) {
-  return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) {
-    return {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[c];
+function displayBatches(r) {
+  $('batches').innerHTML = '';
+  $('batchSelect').innerHTML = '';
+
+  const placeholder = new Option('Choose a batch…', '');
+  placeholder.selected = !r.selectedBatchId;
+  $('batchSelect').add(placeholder);
+
+  (r.batches || []).forEach(b => {
+    const selected =
+      b.selected === true ||
+      (r.selectedBatchId && String(b.id) === String(r.selectedBatchId));
+
+    const card = document.createElement('div');
+    card.className = selected ? 'batch selected-batch' : 'batch';
+
+    card.innerHTML =
+      (selected ? '<div class="selected-label">✓ SCANNED BATCH</div>' : '') +
+      '<b>' + escapeHtml(b.lot || b.id) + '</b><br>' +
+      '<b>Batch ID:</b> ' + escapeHtml(b.id) + '<br>' +
+      '<b>Barcode:</b> ' + escapeHtml(b.barcode || '') + '<br>' +
+      '<b>Received:</b> ' + escapeHtml(b.received || '') + '<br>' +
+      '<b>Expires:</b> ' + escapeHtml(b.expiration || 'Not entered') + '<br>' +
+      '<b>Quantity:</b> ' + escapeHtml(b.quantity) + '<br>' +
+      '<b>Status:</b> ' + escapeHtml(b.status || '');
+
+    $('batches').appendChild(card);
+
+    const option = new Option(
+      (b.lot || b.id) + ' — ' + b.quantity + ' on hand' +
+      (b.expiration ? ' — expires ' + b.expiration : ''),
+      b.id
+    );
+
+    option.selected = !!selected;
+    $('batchSelect').add(option);
   });
+
+  if (r.selectedBatchId) {
+    $('batchSelect').value = String(r.selectedBatchId);
+  }
 }
 
-function safeImageUrl(value) {
-  const s = String(value || '').trim();
-  return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : '';
+/* ---------- Stock transactions ---------- */
+
+async function submitTransaction() {
+  if (!currentItem) return;
+
+  const batchId = $('batchSelect').value;
+  const type = $('txnType').value;
+  const quantity = Number($('txnQty').value);
+
+  if (!batchId) {
+    showStatus('Select a specific batch before recording a transaction.');
+    return;
+  }
+
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    showStatus('Enter a positive whole-number quantity.');
+    return;
+  }
+
+  try {
+    showStatus('Recording transaction…');
+
+    const r = await api('transaction', {
+      token: token,
+      request: {
+        itemId: currentItem.item.id,
+        batchId: batchId,
+        type: type,
+        quantity: quantity,
+        reason: $('txnReason').value,
+        requestId: makeId()
+      }
+    });
+
+    if (!r || !r.success) throw new Error(r?.message || 'Transaction failed.');
+
+    const barcode = $('barcode').value.trim() || currentItem.item.barcode;
+    $('txnQty').value = '';
+    $('txnReason').value = '';
+
+    showStatus(r.message || 'Transaction recorded.');
+
+    if (barcode) await findItem(barcode);
+
+  } catch(e) {
+    showStatus(e.message || 'Transaction failed.');
+  }
 }
 
-/* ---------- New product creation ---------- */
+/* ---------- Create a batch ---------- */
 
-async function submitNewProduct() {
-  if (!currentPermissions.createProducts) {
-    status('Your account cannot create products.');
+async function createBatch() {
+  if (!currentItem) return;
+
+  const quantity = Number($('newQuantity').value);
+  const lot = $('newLot').value.trim();
+
+  if (!lot) {
+    showStatus('Enter a lot or batch number.');
+    return;
+  }
+
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    showStatus('Enter a positive whole-number starting quantity.');
+    return;
+  }
+
+  try {
+    showStatus('Creating batch…');
+
+    const r = await api('newBatch', {
+      token: token,
+      request: {
+        itemId: currentItem.item.id,
+        lot: lot,
+        receivedDate: $('newReceived').value,
+        expirationDate: $('newExpiration').value,
+        quantity: quantity,
+        supplier: $('newSupplier').value,
+        location: $('newLocation').value,
+        notes: $('newNotes').value,
+        requestId: makeId()
+      }
+    });
+
+    if (!r || !r.success) throw new Error(r?.message || 'Batch creation failed.');
+
+    showStatus(
+      r.message + '\nNew batch barcode: ' + (r.batchBarcode || '')
+    );
+
+    $('newLot').value = '';
+    $('newQuantity').value = '';
+    $('newExpiration').value = '';
+    $('newSupplier').value = '';
+    $('newNotes').value = '';
+
+    // Look up the new batch barcode so it is highlighted immediately.
+    if (r.batchBarcode) {
+      $('barcode').value = r.batchBarcode;
+      await findItem(r.batchBarcode);
+    }
+
+  } catch(e) {
+    showStatus(e.message || 'Batch creation failed.');
+  }
+}
+
+/* ---------- Create a product ---------- */
+
+async function createProduct() {
+  if (!permissions.createProducts) {
+    showStatus('Your account cannot create products.');
     return;
   }
 
@@ -673,21 +687,19 @@ async function submitNewProduct() {
   const reorderLevel = Number($('productReorder').value || 0);
 
   if (!name) {
-    status('Enter a product name.');
-    $('productName').focus();
+    showStatus('Enter a product name.');
     return;
   }
 
   if (!Number.isSafeInteger(reorderLevel) || reorderLevel < 0) {
-    status('Reorder level must be zero or a positive whole number.');
+    showStatus('Reorder level must be zero or a positive whole number.');
     return;
   }
 
-  const button = $('createProductButton');
-  button.disabled = true;
+  $('createProductButton').disabled = true;
 
   try {
-    status('Creating product…');
+    showStatus('Creating product…');
 
     const r = await api('newProduct', {
       token: token,
@@ -706,163 +718,45 @@ async function submitNewProduct() {
         handling: $('productHandling').value,
         profileNotes: $('productProfileNotes').value,
         photoUrl: $('productPhoto').value.trim(),
-        requestId: requestId()
+        requestId: makeId()
       }
     });
 
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Product creation failed.');
-    }
+    if (!r || !r.success) throw new Error(r?.message || 'Product creation failed.');
 
-    status(
+    showStatus(
       r.message + '\nItem ID: ' + r.itemId +
       (r.barcode ? '\nBarcode: ' + r.barcode : '')
     );
 
-    clearNewProductForm();
+    [
+      'productName','productBarcode','productCategory','productManufacturer',
+      'productUnit','productLocation','productNotes','productUses',
+      'productWarnings','productInstructions','productHandling',
+      'productProfileNotes','productPhoto'
+    ].forEach(id => $(id).value = '');
 
-    if (r.barcode && currentPermissions.scan) {
+    $('productReorder').value = '0';
+
+    if (r.barcode) {
       $('barcode').value = r.barcode;
       await findItem(r.barcode);
-    } else {
-      $('itemPanel').classList.add('hidden');
     }
 
-  } catch (e) {
-    status(e.message || 'Product creation failed.');
-
+  } catch(e) {
+    showStatus(e.message || 'Product creation failed.');
   } finally {
-    button.disabled = false;
+    $('createProductButton').disabled = false;
   }
 }
 
-function clearNewProductForm() {
-  [
-    'productName', 'productBarcode', 'productCategory',
-    'productManufacturer', 'productUnit', 'productLocation',
-    'productNotes', 'productUses', 'productWarnings',
-    'productInstructions', 'productHandling',
-    'productProfileNotes', 'productPhoto'
-  ].forEach(function(id) {
-    $(id).value = '';
-  });
-
-  $('productReorder').value = '0';
-}
-
-/* ---------- Stock transactions ---------- */
-
-async function submitTransaction() {
-  if (!currentItem) return;
-
-  const type = $('txnType').value;
-  const qty = Number($('txnQty').value);
-  const batchId = $('batchSelect').value;
-
-  if (!batchId) {
-    status('Select a specific batch before changing stock.');
-    return;
-  }
-
-  if (!Number.isSafeInteger(qty) || qty <= 0) {
-    status('Enter a positive whole-number quantity.');
-    return;
-  }
-
-  try {
-    status('Saving stock transaction…');
-
-    const r = await api('transaction', {
-      token: token,
-      request: {
-        itemId: currentItem.item.id,
-        batchId: batchId,
-        type: type,
-        quantity: qty,
-        reason: $('txnReason').value,
-        requestId: requestId()
-      }
-    });
-
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Transaction failed.');
-    }
-
-    const barcode = currentItem.item.barcode;
-
-    $('txnQty').value = '';
-    $('txnReason').value = '';
-
-    status(r.message);
-
-    if (barcode) {
-      await findItem(barcode);
-    }
-
-  } catch (e) {
-    status(e.message || 'Transaction failed.');
-  }
-}
-
-/* ---------- New batch ---------- */
-
-async function createBatch() {
-  if (!currentItem) return;
-
-  const qty = Number($('newQuantity').value);
-
-  if (!Number.isSafeInteger(qty) || qty <= 0) {
-    status('Enter a positive whole-number quantity.');
-    return;
-  }
-
-  if (!$('newLot').value.trim()) {
-    status('Enter a lot / batch number.');
-    return;
-  }
-
-  try {
-    status('Creating batch…');
-
-    const r = await api('newBatch', {
-      token: token,
-      request: {
-        itemId: currentItem.item.id,
-        lot: $('newLot').value,
-        receivedDate: $('newReceived').value,
-        expirationDate: $('newExpiration').value,
-        quantity: qty,
-        supplier: $('newSupplier').value,
-        location: $('newLocation').value,
-        notes: $('newNotes').value,
-        requestId: requestId()
-      }
-    });
-
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Batch creation failed.');
-    }
-
-    const barcode = currentItem.item.barcode;
-
-    status(r.message + ' Batch barcode: ' + r.batchBarcode);
-
-    if (barcode) {
-      await findItem(barcode);
-    }
-
-  } catch (e) {
-    status(e.message || 'Batch creation failed.');
-  }
-}
-
-/* ---------- Item profile ---------- */
+/* ---------- Edit product profile ---------- */
 
 async function saveProfile() {
   if (!currentItem) return;
 
   try {
-    status('Saving item profile…');
+    showStatus('Saving profile…');
 
     const r = await api('profileSave', {
       token: token,
@@ -877,246 +771,129 @@ async function saveProfile() {
       }
     });
 
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Profile save failed.');
-    }
+    if (!r || !r.success) throw new Error(r?.message || 'Profile save failed.');
 
-    const barcode = currentItem.item.barcode;
+    showStatus(r.message || 'Profile saved.');
+    await findItem(currentItem.item.barcode);
 
-    status(r.message);
-
-    if (barcode) {
-      await findItem(barcode);
-    }
-
-  } catch (e) {
-    status(e.message || 'Profile save failed.');
+  } catch(e) {
+    showStatus(e.message || 'Profile save failed.');
   }
 }
 
-/* ---------- Rear camera selection ---------- */
+/* ---------- Camera: explicitly select rear camera ---------- */
 
-async function findRearCameraId_() {
-  if (!navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia ||
-      !navigator.mediaDevices.enumerateDevices) {
-    throw new Error(
-      'This browser does not support camera device selection.'
-    );
+async function getRearCameraId() {
+  if (!navigator.mediaDevices?.getUserMedia ||
+      !navigator.mediaDevices?.enumerateDevices) {
+    throw new Error('This browser does not support camera selection.');
   }
 
-  let permissionStream = null;
+  let stream = null;
 
   try {
-    status('Requesting camera permission…');
-
-    // Request permission so Safari can reveal camera device labels.
-    // This temporary stream is stopped before the scanner is started.
-    permissionStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' }
-      },
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: 'environment'}},
       audio: false
     });
-
-  } catch (e) {
-    throw new Error(
-      'Camera permission was not granted: ' +
-      (e.message || String(e))
-    );
-
   } finally {
-    if (permissionStream) {
-      permissionStream.getTracks().forEach(function(track) {
-        track.stop();
-      });
-    }
+    if (stream) stream.getTracks().forEach(track => track.stop());
   }
 
-  // Enumerate after permission has been granted.
-  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cameras = (await navigator.mediaDevices.enumerateDevices())
+    .filter(device => device.kind === 'videoinput');
 
-  const cameras = devices.filter(function(device) {
-    return device.kind === 'videoinput';
-  });
+  const rear = cameras.find(camera =>
+    /back|rear|environment|world|背面|trasera/i.test(camera.label || '') &&
+    !/front|user|facetime/i.test(camera.label || '')
+  );
 
-  if (!cameras.length) {
-    throw new Error('No cameras were detected by Safari.');
-  }
-
-  // Select only a camera whose label identifies it as rear-facing.
-  const rearCamera = cameras.find(function(camera) {
-    return /back|rear|environment|world|背面|trasera/i.test(
-      camera.label || ''
-    );
-  });
-
-  if (!rearCamera) {
-    const names = cameras.map(function(camera, index) {
-      return camera.label || ('Camera ' + (index + 1));
-    });
-
+  if (!rear) {
     throw new Error(
-      'Safari detected cameras but did not identify a rear camera. ' +
-      'Detected: ' + names.join(', ') +
-      '. No front-camera fallback was started.'
+      'Safari did not identify a rear camera. Detected: ' +
+      cameras.map(c => c.label || 'Unlabelled camera').join(', ')
     );
   }
 
-  return rearCamera.deviceId;
+  return rear.deviceId;
 }
 
-/* ---------- Camera scanner ---------- */
-
 async function startCamera() {
-  if (!currentPermissions.scan) {
-    status('Your account does not have permission to scan.');
+  if (!permissions.scan) {
+    showStatus('Your account cannot scan.');
     return;
   }
 
-  if (cameraStarting || (scanner && scanner.isScanning)) {
-    return;
-  }
+  if (cameraStarting || scanner?.isScanning) return;
 
   cameraStarting = true;
-  cameraResultHandled = false;
+  scanHandled = false;
   $('startCameraButton').disabled = true;
 
   try {
     if (!window.isSecureContext) {
-      throw new Error(
-        'Camera access requires HTTPS. Open the GitHub Pages website.'
-      );
+      throw new Error('Camera access requires the HTTPS GitHub Pages website.');
     }
 
     if (!window.Html5Qrcode) {
-      throw new Error(
-        'The camera scanning library did not load. Refresh the page.'
-      );
+      throw new Error('The camera library did not load. Refresh the page.');
     }
 
-    // Clean up a previous scanner instance.
-    if (scanner) {
-      try {
-        if (scanner.isScanning) {
-          await scanner.stop();
-        }
-      } catch (e) {}
-
-      try {
-        await scanner.clear();
-      } catch (e) {}
-
-      scanner = null;
-    }
+    await stopCamera();
 
     $('reader').classList.remove('hidden');
-    $('cameraInstructions').classList.remove('hidden');
+    $('cameraHelp').classList.remove('hidden');
 
-    status('Identifying the rear camera…');
+    showStatus('Finding the rear camera…');
+    const rearId = await getRearCameraId();
 
-    // This returns the rear camera's actual device ID.
-    const rearCameraId = await findRearCameraId_();
+    scanner = new Html5Qrcode('reader');
 
-    scanner = new Html5Qrcode('reader', {
-      verbose: false
-    });
-
-    const scanConfig = {
-      fps: 10,
-
-      qrbox: function(viewfinderWidth, viewfinderHeight) {
-        return {
-          width: Math.min(
-            320,
-            Math.floor(viewfinderWidth * 0.85)
-          ),
-          height: Math.min(
-            180,
-            Math.floor(viewfinderHeight * 0.40)
-          )
-        };
-      },
-
-      aspectRatio: 1.333333,
-      disableFlip: true
-    };
-
-    status('Starting rear camera: ' + (
-      camerasLabel_(rearCameraId)
-    ));
-
-    // IMPORTANT:
-    // Use the selected rear camera's device ID.
-    // Do not use facingMode here.
     await scanner.start(
-      rearCameraId,
-      scanConfig,
-
-      function(decodedText) {
-        if (cameraResultHandled) return;
-
-        cameraResultHandled = true;
-
-        const result = String(decodedText || '').trim();
-
-        if (!result) {
-          cameraResultHandled = false;
-          return;
-        }
-
-        $('barcode').value = result;
-        status('Barcode scanned: ' + result + '\nLooking up item…');
-
-        stopCamera().then(function() {
-          findItem(result);
-        });
+      rearId,
+      {
+        fps: 10,
+        qrbox: (width, height) => ({
+          width: Math.min(320, Math.floor(width * .85)),
+          height: Math.min(180, Math.floor(height * .4))
+        }),
+        aspectRatio: 1.333333,
+        disableFlip: true
       },
+      decodedText => {
+        if (scanHandled) return;
 
-      function() {
-        // No barcode found in this frame. Continue scanning.
-      }
+        const value = String(decodedText || '').trim();
+        if (!value) return;
+
+        scanHandled = true;
+        $('barcode').value = value;
+
+        showStatus('Scanned ' + value + '. Looking it up…');
+
+        stopCamera().then(() => findItem(value));
+      },
+      () => {}
     );
 
-    status(
-      'Rear camera active.\n' +
-      'Only the barcode inside the scanning box will be read.'
-    );
+    showStatus('Rear camera active. Point it at a barcode.');
 
-  } catch (e) {
-    const message = e && e.message ? e.message : String(e);
-
-    status(
-      'Could not start the rear camera: ' + message
-    );
+  } catch(e) {
+    showStatus('Camera error: ' + (e.message || String(e)));
 
     if (scanner) {
-      try {
-        if (scanner.isScanning) {
-          await scanner.stop();
-        }
-      } catch (ignored) {}
-
-      try {
-        await scanner.clear();
-      } catch (ignored) {}
-
+      try { if (scanner.isScanning) await scanner.stop(); } catch(x) {}
+      try { await scanner.clear(); } catch(x) {}
       scanner = null;
     }
 
     $('reader').classList.add('hidden');
-    $('cameraInstructions').classList.add('hidden');
+    $('cameraHelp').classList.add('hidden');
 
   } finally {
     cameraStarting = false;
-    $('startCameraButton').disabled = !currentPermissions.scan;
+    $('startCameraButton').disabled = !permissions.scan;
   }
-}
-
-// Keep the camera label available for the status message.
-function camerasLabel_(deviceId) {
-  // The device ID is intentionally not displayed.
-  return 'selected rear-facing device';
 }
 
 async function stopCamera() {
@@ -1126,165 +903,151 @@ async function stopCamera() {
 
   try {
     if (scanner) {
-      try {
-        if (scanner.isScanning) {
-          await scanner.stop();
-        }
-      } catch (e) {}
-
-      try {
-        await scanner.clear();
-      } catch (e) {}
-
+      try { if (scanner.isScanning) await scanner.stop(); } catch(e) {}
+      try { await scanner.clear(); } catch(e) {}
       scanner = null;
     }
 
     $('reader').classList.add('hidden');
-    $('cameraInstructions').classList.add('hidden');
+    $('cameraHelp').classList.add('hidden');
 
   } finally {
     cameraStopping = false;
-    cameraResultHandled = false;
+    scanHandled = false;
   }
 }
 
 /* ---------- Owner user management ---------- */
 
+const permissionLabels = {
+  scan: 'Can scan / look up items',
+  receive: 'Can receive stock',
+  remove: 'Can remove stock',
+  createBatches: 'Can create batches',
+  createProducts: 'Can create products (Stock Manager)',
+  editProfiles: 'Can edit product profiles'
+};
+
+$('permissionInputs').innerHTML = Object.entries(permissionLabels).map(
+  ([key,label]) =>
+    '<label class="checkline"><input type="checkbox" id="perm_' +
+    key + '"> ' + label + '</label>'
+).join('');
+
+let editingEmail = '';
+
 async function loadUsers() {
   try {
-    status('Loading user accounts…');
-
-    const r = await api('usersList', { token: token });
-
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Could not load users.');
-    }
+    const r = await api('usersList', {token: token});
+    if (!r || !r.success) throw new Error(r?.message || 'Could not load users.');
 
     $('usersList').innerHTML = '';
 
-    (r.users || []).forEach(function(u) {
-      const d = document.createElement('div');
-      d.className = 'batch';
+    (r.users || []).forEach(user => {
+      const card = document.createElement('div');
+      card.className = 'batch';
 
-      d.innerHTML =
-        '<b>' + esc(u.displayName) + '</b> — ' + esc(u.email) + '<br>' +
-        'Role: ' + esc(u.role) + ' | ' + (u.active ? 'Active' : 'Inactive') +
-        '<br><button class="secondary" type="button">Edit this account</button>';
+      const info = document.createElement('div');
+      info.innerHTML =
+        '<b>' + escapeHtml(user.displayName) + '</b><br>' +
+        escapeHtml(user.email) + '<br>' +
+        escapeHtml(user.role) + ' — ' +
+        (user.active ? 'Active' : 'Inactive');
 
-      d.querySelector('button').onclick = function() {
-        editUser(u);
-      };
+      const button = document.createElement('button');
+      button.className = 'secondary';
+      button.textContent = 'Edit user';
+      button.onclick = () => editUser(user);
 
-      $('usersList').appendChild(d);
+      card.append(info, button);
+      $('usersList').appendChild(card);
     });
 
-    status('User accounts loaded.');
-
-  } catch (e) {
-    status(e.message || 'Could not load users.');
+  } catch(e) {
+    showStatus(e.message || 'Could not load users.');
   }
 }
 
-let editingUserEmail = '';
+function editUser(user) {
+  editingEmail = user.email;
 
-const PERMISSION_COLUMNS_JS = {
-  scan: 'Can scan / look up items',
-  receive: 'Receive stock',
-  remove: 'Remove stock',
-  createBatches: 'Create new batches',
-  createProducts: 'Create new products (Stock Manager)',
-  editProfiles: 'Edit item profiles'
-};
-
-$('permissionInputs').innerHTML =
-  Object.entries(PERMISSION_COLUMNS_JS).map(function(entry) {
-    return '<label class="checkline">' +
-      '<input type="checkbox" id="perm_' + entry[0] + '"> ' +
-      entry[1] +
-      '</label>';
-  }).join('');
-
-function editUser(u) {
-  editingUserEmail = u.email;
-
-  $('uEmail').value = u.email;
+  $('uEmail').value = user.email;
   $('uEmail').disabled = true;
-  $('uName').value = u.displayName;
+  $('uName').value = user.displayName;
   $('uPin').value = '';
-  $('uActive').checked = u.active;
+  $('uActive').checked = user.active;
 
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
-    const el = $('perm_' + k);
-    if (el) {
-      el.checked = !!(u.permissions && u.permissions[k]);
-    }
+  Object.keys(permissionLabels).forEach(key => {
+    $('perm_' + key).checked =
+      !!(user.permissions && user.permissions[key]);
   });
 }
 
 function clearUserForm() {
-  editingUserEmail = '';
-
+  editingEmail = '';
   $('uEmail').disabled = false;
   $('uEmail').value = '';
   $('uName').value = '';
   $('uPin').value = '';
   $('uActive').checked = false;
 
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
-    $('perm_' + k).checked = false;
+  Object.keys(permissionLabels).forEach(key => {
+    $('perm_' + key).checked = false;
   });
 }
 
 async function saveUser() {
-  const permissions = {};
+  const perms = {};
 
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
-    permissions[k] = $('perm_' + k).checked;
+  Object.keys(permissionLabels).forEach(key => {
+    perms[key] = $('perm_' + key).checked;
   });
 
   try {
-    status('Saving user account…');
+    showStatus('Saving user…');
 
     const r = await api('userSave', {
       token: token,
       request: {
-        email: $('uEmail').value,
-        displayName: $('uName').value,
+        email: $('uEmail').value.trim(),
+        displayName: $('uName').value.trim(),
         pin: $('uPin').value,
         active: $('uActive').checked,
-        permissions: permissions
+        permissions: perms
       }
     });
 
-    if (!r || !r.success) {
-      throw new Error(r && r.message ? r.message : 'Could not save user.');
-    }
+    if (!r || !r.success) throw new Error(r?.message || 'Could not save user.');
 
-    status(r.message);
-
+    showStatus(r.message || 'User saved.');
     clearUserForm();
     await loadUsers();
 
-  } catch (e) {
-    status(e.message || 'Could not save user.');
+  } catch(e) {
+    showStatus(e.message || 'Could not save user.');
   }
 }
 
-/* ---------- Startup ---------- */
+/* ---------- Keyboard shortcuts and startup ---------- */
 
-$('pin').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    login();
-  }
+$('pin').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
 });
 
-$('barcode').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    findItem();
-  }
+$('barcode').addEventListener('keydown', e => {
+  if (e.key === 'Enter') findItem();
 });
 
-validate();
+$('txnType').add(new Option('Receive stock', 'Receive'));
+$('txnType').add(new Option('Remove stock', 'Remove'));
+
+$('txnType').addEventListener('change', () => {
+  const type = $('txnType').value;
+  $('txnQty').placeholder =
+    type === 'Remove' ? 'Quantity to remove' : 'Quantity to receive';
+});
+
+restoreSession();
 </script>
 </body>
 </html>
