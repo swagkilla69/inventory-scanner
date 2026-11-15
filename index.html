@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Inventory Scanner</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
+
 <style>
 *{box-sizing:border-box}
 body{font-family:Arial,sans-serif;max-width:620px;margin:20px auto;padding:0 14px;color:#202124;background:#f7f8fa}
@@ -24,7 +25,12 @@ small,.muted{color:#666}
 .row{display:flex;gap:8px}
 .row>*{flex:1;min-width:0}
 .hidden{display:none!important}
-#reader{width:100%;margin-top:10px}
+#reader{width:100%;margin-top:12px;overflow:hidden;border-radius:10px}
+#reader video{object-fit:cover}
+#reader__scan_region{background:#111}
+#reader__dashboard{padding:8px}
+#reader__dashboard_section_csr button{width:auto}
+.camera-instructions{font-size:13px;color:#555;margin:8px 0}
 .itemtitle{font-size:21px;font-weight:bold}
 .batch{border:1px solid #ddd;border-radius:8px;padding:10px;margin:8px 0}
 .status{padding:9px;border-radius:8px;background:#eef3fd;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -32,8 +38,10 @@ small,.muted{color:#666}
 .checkline input{width:auto}
 img{max-width:100%;max-height:180px;object-fit:contain}
 .section-note{font-size:13px;color:#666;margin:5px 0 12px}
+.camera-frame-label{font-weight:bold;text-align:center;margin:10px 0 4px}
 </style>
 </head>
+
 <body>
 
 <h1>Inventory Scanner</h1>
@@ -63,10 +71,16 @@ img{max-width:100%;max-height:180px;object-fit:contain}
     </div>
 
     <div class="row">
-      <button type="button" onclick="startCamera()">Open Camera Scanner</button>
+      <button id="startCameraButton" type="button" onclick="startCamera()">Open Camera Scanner</button>
       <button class="secondary" type="button" onclick="stopCamera()">Stop Camera</button>
     </div>
-    <div id="reader"></div>
+
+    <div id="cameraInstructions" class="camera-instructions hidden">
+      Aim the barcode inside the scanning box. Only codes inside the box are scanned.
+      Keep other nearby barcodes outside the box.
+    </div>
+
+    <div id="reader" class="hidden"></div>
   </div>
 
   <div id="newProductPanel" class="panel hidden">
@@ -256,6 +270,9 @@ let currentItem = null;
 let scanner = null;
 let currentPermissions = {};
 let requestInProgress = false;
+let cameraStarting = false;
+let cameraStopping = false;
+let cameraResultHandled = false;
 
 const $ = id => document.getElementById(id);
 
@@ -452,19 +469,21 @@ function showApp() {
     !currentPermissions.manageUsers
   );
 
+  $('startCameraButton').disabled = !currentPermissions.scan;
+
   if (currentPermissions.manageUsers) loadUsers();
 }
 
 async function logout() {
   const oldToken = token;
 
+  await stopCamera();
+
   token = '';
   sessionStorage.removeItem(SESSION_KEY);
   currentUser = null;
   currentItem = null;
   currentPermissions = {};
-
-  await stopCamera();
 
   $('itemPanel').classList.add('hidden');
   showLogin();
@@ -679,7 +698,6 @@ async function submitNewProduct() {
 
     clearNewProductForm();
 
-    // Make the newly created product available immediately.
     if (r.barcode && currentPermissions.scan) {
       $('barcode').value = r.barcode;
       await findItem(r.barcode);
@@ -836,43 +854,162 @@ async function saveProfile() {
 /* ---------- Camera scanner ---------- */
 
 async function startCamera() {
+  if (!currentPermissions.scan) {
+    status('Your account does not have permission to scan.');
+    return;
+  }
+
+  if (cameraStarting || (scanner && scanner.isScanning)) return;
+
+  cameraStarting = true;
+  cameraResultHandled = false;
+  $('startCameraButton').disabled = true;
+
   try {
     if (!window.isSecureContext) {
       throw new Error('Camera access requires HTTPS. Open the GitHub Pages website.');
     }
 
-    if (!scanner) scanner = new Html5Qrcode('reader');
+    if (!window.Html5Qrcode) {
+      throw new Error('The camera scanning library did not load. Refresh the page.');
+    }
 
-    const cams = await Html5Qrcode.getCameras();
-    if (!cams || !cams.length) throw new Error('No camera was found.');
+    // Clear any previous scanner instance before starting again.
+    if (scanner) {
+      try {
+        if (scanner.isScanning) await scanner.stop();
+      } catch (e) {}
+
+      try {
+        await scanner.clear();
+      } catch (e) {}
+
+      scanner = null;
+    }
+
+    $('reader').classList.remove('hidden');
+    $('cameraInstructions').classList.remove('hidden');
+
+    scanner = new Html5Qrcode('reader', {
+      verbose: false
+    });
+
+    status('Requesting the REAR camera…');
+
+    // Explicitly request the rear-facing camera.
+    // No cams[0] selection and no automatic front-camera fallback.
+    const cameraConfig = {
+      facingMode: "environment"
+    };
+
+    // The qrbox function defines the ONLY area used for decoding.
+    // The library shades the area outside this box.
+    const scanConfig = {
+      fps: 10,
+      qrbox: function(viewfinderWidth, viewfinderHeight) {
+        const width = Math.min(
+          320,
+          Math.floor(viewfinderWidth * 0.85)
+        );
+
+        const height = Math.min(
+          180,
+          Math.floor(viewfinderHeight * 0.40)
+        );
+
+        return {
+          width: width,
+          height: height
+        };
+      },
+      aspectRatio: 1.333333,
+      disableFlip: true
+    };
 
     await scanner.start(
-      cams[0].id,
-      { fps: 10, qrbox: { width: 250, height: 180 } },
-      function(text) {
-        stopCamera();
-        $('barcode').value = text;
-        findItem(text);
+      cameraConfig,
+      scanConfig,
+      function(decodedText) {
+        // Prevent multiple detections from triggering multiple lookups.
+        if (cameraResultHandled) return;
+        cameraResultHandled = true;
+
+        const result = String(decodedText || '').trim();
+        if (!result) return;
+
+        $('barcode').value = result;
+        status('Barcode scanned: ' + result + '\nLooking up item…');
+
+        stopCamera().then(function() {
+          findItem(result);
+        });
       },
-      function() {}
+      function() {
+        // Normal frame with no barcode found. Do nothing.
+      }
     );
 
-    status('Camera scanning.');
+    status(
+      'REAR camera active.\n' +
+      'Only the barcode inside the scanning box will be read.'
+    );
+
   } catch (e) {
-    status('Camera error: ' + (e.message || String(e)));
+    const message = e && e.message ? e.message : String(e);
+
+    // Do not silently switch to the front camera.
+    status(
+      'Could not start the rear camera: ' + message +
+      '\nCheck camera permission and close other apps using the camera.'
+    );
+
+    if (scanner) {
+      try {
+        if (scanner.isScanning) await scanner.stop();
+      } catch (ignored) {}
+
+      try {
+        await scanner.clear();
+      } catch (ignored) {}
+
+      scanner = null;
+    }
+
+    $('reader').classList.add('hidden');
+    $('cameraInstructions').classList.add('hidden');
+
+  } finally {
+    cameraStarting = false;
+    $('startCameraButton').disabled = !currentPermissions.scan;
   }
 }
 
 async function stopCamera() {
-  if (!scanner) return;
+  if (cameraStopping) return;
+  cameraStopping = true;
 
   try {
-    if (scanner.isScanning) await scanner.stop();
-  } catch (e) {}
+    if (scanner) {
+      try {
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
+      } catch (e) {}
 
-  try {
-    await scanner.clear();
-  } catch (e) {}
+      try {
+        await scanner.clear();
+      } catch (e) {}
+
+      scanner = null;
+    }
+
+    $('reader').classList.add('hidden');
+    $('cameraInstructions').classList.add('hidden');
+
+  } finally {
+    cameraStopping = false;
+    cameraResultHandled = false;
+  }
 }
 
 /* ---------- Owner user management ---------- */
