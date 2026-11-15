@@ -197,12 +197,10 @@ let currentItem = null;
 let scanner = null;
 let currentPermissions = {};
 
-const $ = function(id) {
-  return document.getElementById(id);
-};
+const $ = id => document.getElementById(id);
 
-function status(message) {
-  $('status').textContent = message;
+function status(s) {
+  $('status').textContent = s;
 }
 
 function requestId() {
@@ -211,90 +209,84 @@ function requestId() {
   });
 }
 
-function api(action, data) {
-  data = data || {};
-
+/*
+ * Apps Script communication.
+ * Uses JSONP rather than the previous hidden-iframe bridge.
+ */
+function api(action, data = {}) {
   return new Promise(function(resolve, reject) {
     const nonce = requestId();
-    const frame = document.createElement('iframe');
-    const form = document.createElement('form');
+    const callbackName = 'inventoryCallback_' + nonce;
+    const script = document.createElement('script');
 
-    frame.name = 'api_' + nonce;
-    frame.style.display = 'none';
+    let finished = false;
 
-    form.method = 'POST';
-    form.action = API_URL;
-    form.target = frame.name;
-    form.style.display = 'none';
+    const timer = setTimeout(function() {
+      finish(new Error(
+        'Server timed out. Check that the latest Apps Script deployment is active, then try again.'
+      ));
+    }, 30000);
 
-    const field = document.createElement('input');
-    field.name = 'payload';
-    field.value = JSON.stringify({
+    function finish(error, result) {
+      if (finished) return;
+
+      finished = true;
+      clearTimeout(timer);
+
+      try {
+        delete window[callbackName];
+      } catch (e) {
+        window[callbackName] = undefined;
+      }
+
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+
+      if (error) {
+        reject(error);
+      } else {
+        resolve(result);
+      }
+    }
+
+    window[callbackName] = function(message) {
+      if (!message || message.nonce !== nonce) {
+        finish(new Error('The server returned an invalid response.'));
+        return;
+      }
+
+      finish(
+        null,
+        message.result || {
+          success: false,
+          message: 'The server returned an empty response.'
+        }
+      );
+    };
+
+    script.onerror = function() {
+      finish(new Error(
+        'Could not reach the Apps Script server. Check the web app deployment and internet connection.'
+      ));
+    };
+
+    const payload = JSON.stringify({
       action: action,
       data: data,
       nonce: nonce
     });
 
-    form.appendChild(field);
+    script.src =
+      API_URL +
+      '?payload=' + encodeURIComponent(payload) +
+      '&callback=' + encodeURIComponent(callbackName);
 
-    const timer = setTimeout(function() {
-      cleanup();
-      reject(new Error('Server timed out. Please try again.'));
-    }, 25000);
-
-    function cleanup() {
-      clearTimeout(timer);
-      window.removeEventListener('message', listener);
-      form.remove();
-      frame.remove();
-    }
-
-    function listener(event) {
-      if (
-        ![
-          'https://script.google.com',
-          'https://script.googleusercontent.com'
-        ].includes(event.origin)
-      ) {
-        return;
-      }
-
-      const message = event.data;
-
-      if (
-        !message ||
-        message.nonce !== nonce ||
-        !message.data
-      ) {
-        return;
-      }
-
-      cleanup();
-
-      try {
-        const bytes = Uint8Array.from(
-          atob(message.data),
-          function(character) {
-            return character.charCodeAt(0);
-          }
-        );
-
-        resolve(
-          JSON.parse(new TextDecoder().decode(bytes))
-        );
-      } catch (error) {
-        reject(error);
-      }
-    }
-
-    window.addEventListener('message', listener);
-    document.body.appendChild(frame);
-    document.body.appendChild(form);
-    form.submit();
+    document.head.appendChild(script);
   });
 }
 
-/* ================= LOGIN ================= */
+/* ---------- Login and session ---------- */
 
 async function login() {
   const pin = $('pin').value.trim();
@@ -307,25 +299,23 @@ async function login() {
   try {
     status('Signing in…');
 
-    // PIN ONLY. No email is sent.
-    const result = await api('login', { pin: pin });
+    const r = await api('login', { pin: pin });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
-    token = result.token;
+    token = r.token;
     sessionStorage.setItem(SESSION_KEY, token);
 
-    currentUser = result;
-    currentPermissions = result.permissions || {};
-
-    $('pin').value = '';
+    currentUser = r;
+    currentPermissions = r.permissions || {};
 
     showApp();
     status('Signed in.');
-  } catch (error) {
-    status(error.message);
+    $('pin').value = '';
+  } catch (e) {
+    status(e.message);
   }
 }
 
@@ -336,21 +326,21 @@ async function validate() {
   }
 
   try {
-    const result = await api('validate', { token: token });
+    const r = await api('validate', { token: token });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
-    currentUser = result;
-    currentPermissions = result.permissions || {};
+    currentUser = r;
+    currentPermissions = r.permissions || {};
 
     showApp();
-  } catch (error) {
+  } catch (e) {
     sessionStorage.removeItem(SESSION_KEY);
     token = '';
     showLogin();
-    status(error.message);
+    status(e.message);
   }
 }
 
@@ -394,23 +384,23 @@ function showApp() {
 async function logout() {
   try {
     await api('logout', { token: token });
-  } catch (error) {
-    // Clear the local session even if the server is unavailable.
-  }
+  } catch (e) {}
 
   token = '';
   sessionStorage.removeItem(SESSION_KEY);
+
   currentUser = null;
   currentItem = null;
 
   stopCamera();
 
   $('itemPanel').classList.add('hidden');
+
   showLogin();
   status('Logged out.');
 }
 
-/* ================= ITEM LOOKUP ================= */
+/* ---------- Item lookup ---------- */
 
 async function findItem(value) {
   const barcode = String(value || $('barcode').value).trim();
@@ -428,87 +418,90 @@ async function findItem(value) {
   try {
     status('Looking up item…');
 
-    const result = await api('lookup', {
+    const r = await api('lookup', {
       barcode: barcode,
       token: token
     });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
-    renderItem(result);
+    renderItem(r);
     status('Item found.');
-  } catch (error) {
-    status(error.message);
+  } catch (e) {
+    status(e.message);
   }
 }
 
-function renderItem(result) {
-  currentItem = result;
+function renderItem(r) {
+  currentItem = r;
 
   $('itemPanel').classList.remove('hidden');
-  $('itemName').textContent = result.item.name || 'Unnamed item';
+  $('itemName').textContent = r.item.name || 'Unnamed item';
 
   $('itemDetails').innerHTML =
-    '<p><b>Item ID:</b> ' + esc(result.item.id) +
-    '<br><b>Barcode:</b> ' + esc(result.item.barcode) +
-    '<br><b>Entered:</b> ' + esc(result.item.dateEntered) +
-    '<br><b>On hand:</b> ' + esc(result.item.onHand) +
-    ' ' + esc(result.item.unit || '') +
-    '<br><b>Category:</b> ' + esc(result.item.category || '') +
-    '<br><b>Manufacturer:</b> ' + esc(result.item.manufacturer || '') +
-    '<br><b>Location:</b> ' + esc(result.item.location || '') +
-    '<br><b>Notes:</b> ' + esc(result.item.notes || '') +
+    '<p>' +
+    '<b>Item ID:</b> ' + esc(r.item.id) + '<br>' +
+    '<b>Barcode:</b> ' + esc(r.item.barcode) + '<br>' +
+    '<b>Entered:</b> ' + esc(r.item.dateEntered) + '<br>' +
+    '<b>On hand:</b> ' + esc(r.item.onHand) + ' ' +
+      esc(r.item.unit || '') + '<br>' +
+    '<b>Category:</b> ' + esc(r.item.category || '') + '<br>' +
+    '<b>Manufacturer:</b> ' + esc(r.item.manufacturer || '') + '<br>' +
+    '<b>Location:</b> ' + esc(r.item.location || '') + '<br>' +
+    '<b>Notes:</b> ' + esc(r.item.notes || '') +
     '</p>';
 
-  const profile = result.profile || {};
+  const p = r.profile || {};
 
   $('profileView').innerHTML =
     '<h2>Profile</h2>' +
-    (profile.photoUrl
-      ? '<img src="' + esc(profile.photoUrl) + '" alt="Item photo">'
+    (p.photoUrl
+      ? '<img src="' + esc(p.photoUrl) + '" alt="Item photo">'
       : '') +
-    '<p><b>Uses:</b> ' + esc(profile.uses || '') +
-    '<br><b>Warnings:</b> ' + esc(profile.warnings || '') +
-    '<br><b>Instructions:</b> ' + esc(profile.instructions || '') +
-    '<br><b>Special handling:</b> ' + esc(profile.handling || '') +
-    '<br><b>Profile notes:</b> ' + esc(profile.notes || '') +
+    '<p>' +
+    '<b>Uses:</b> ' + esc(p.uses || '') + '<br>' +
+    '<b>Warnings:</b> ' + esc(p.warnings || '') + '<br>' +
+    '<b>Instructions:</b> ' + esc(p.instructions || '') + '<br>' +
+    '<b>Special handling:</b> ' + esc(p.handling || '') + '<br>' +
+    '<b>Profile notes:</b> ' + esc(p.notes || '') +
     '</p>';
 
   $('batches').innerHTML = '';
   $('batchSelect').innerHTML = '';
 
-  (result.batches || []).forEach(function(batch) {
-    const div = document.createElement('div');
-    div.className = 'batch';
+  (r.batches || []).forEach(function(b) {
+    const d = document.createElement('div');
+    d.className = 'batch';
 
-    div.innerHTML =
-      '<b>' + esc(batch.lot || batch.id) + '</b>' +
-      '<br>Batch ID: ' + esc(batch.id) +
-      '<br>Expires: ' + esc(batch.expiration || 'Not entered') +
-      '<br>Quantity: ' + esc(batch.quantity) +
-      '<br>Status: ' + esc(batch.status || '') +
-      '<br>Barcode: ' + esc(batch.barcode || '');
+    d.innerHTML =
+      '<b>' + esc(b.lot || b.id) + '</b><br>' +
+      'Batch ID: ' + esc(b.id) + '<br>' +
+      'Expires: ' + esc(b.expiration || 'Not entered') + '<br>' +
+      'Quantity: ' + esc(b.quantity) + '<br>' +
+      'Status: ' + esc(b.status || '') + '<br>' +
+      'Barcode: ' + esc(b.barcode || '');
 
-    $('batches').appendChild(div);
+    $('batches').appendChild(d);
 
-    const option = document.createElement('option');
-    option.value = batch.id;
-    option.textContent =
-      (batch.lot || batch.id) +
-      ' — ' + batch.quantity + ' on hand' +
-      (batch.expiration ? ' — exp ' + batch.expiration : '');
+    const o = document.createElement('option');
+    o.value = b.id;
 
-    if (batch.selected) {
-      option.selected = true;
+    o.textContent =
+      (b.lot || b.id) +
+      ' — ' + b.quantity + ' on hand' +
+      (b.expiration ? ' — exp ' + b.expiration : '');
+
+    if (b.selected) {
+      o.selected = true;
     }
 
-    $('batchSelect').appendChild(option);
+    $('batchSelect').appendChild(o);
   });
 
-  if (result.selectedBatchId) {
-    $('batchSelect').value = result.selectedBatchId;
+  if (r.selectedBatchId) {
+    $('batchSelect').value = r.selectedBatchId;
   }
 
   $('txnType').innerHTML = '';
@@ -531,36 +524,33 @@ function renderItem(result) {
   $('newQuantity').value = '';
   $('newReceived').value = new Date().toISOString().slice(0, 10);
 
-  $('pUses').value = profile.uses || '';
-  $('pWarnings').value = profile.warnings || '';
-  $('pInstructions').value = profile.instructions || '';
-  $('pHandling').value = profile.handling || '';
-  $('pNotes').value = profile.notes || '';
-  $('pPhoto').value = profile.photoUrl || '';
+  $('pUses').value = p.uses || '';
+  $('pWarnings').value = p.warnings || '';
+  $('pInstructions').value = p.instructions || '';
+  $('pHandling').value = p.handling || '';
+  $('pNotes').value = p.notes || '';
+  $('pPhoto').value = p.photoUrl || '';
 }
 
-function esc(value) {
-  return String(value == null ? '' : value).replace(
-    /[&<>"']/g,
-    function(character) {
-      return {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-      }[character];
-    }
-  );
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) {
+    return {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[c];
+  });
 }
 
-/* ================= STOCK TRANSACTION ================= */
+/* ---------- Stock transactions ---------- */
 
 async function submitTransaction() {
   if (!currentItem) return;
 
   const type = $('txnType').value;
-  const quantity = Number($('txnQty').value);
+  const qty = Number($('txnQty').value);
   const batchId = $('batchSelect').value;
 
   if (!batchId) {
@@ -568,7 +558,7 @@ async function submitTransaction() {
     return;
   }
 
-  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
     status('Enter a positive whole-number quantity.');
     return;
   }
@@ -576,37 +566,37 @@ async function submitTransaction() {
   try {
     status('Saving stock transaction…');
 
-    const result = await api('transaction', {
+    const r = await api('transaction', {
       token: token,
       request: {
         itemId: currentItem.item.id,
         batchId: batchId,
         type: type,
-        quantity: quantity,
+        quantity: qty,
         reason: $('txnReason').value,
         requestId: requestId()
       }
     });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
-    status(result.message);
+    status(r.message);
     await findItem(currentItem.item.barcode);
-  } catch (error) {
-    status(error.message);
+  } catch (e) {
+    status(e.message);
   }
 }
 
-/* ================= NEW BATCH ================= */
+/* ---------- New batch ---------- */
 
 async function createBatch() {
   if (!currentItem) return;
 
-  const quantity = Number($('newQuantity').value);
+  const qty = Number($('newQuantity').value);
 
-  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
     status('Enter a positive whole-number quantity.');
     return;
   }
@@ -614,14 +604,14 @@ async function createBatch() {
   try {
     status('Creating batch…');
 
-    const result = await api('newBatch', {
+    const r = await api('newBatch', {
       token: token,
       request: {
         itemId: currentItem.item.id,
         lot: $('newLot').value,
         receivedDate: $('newReceived').value,
         expirationDate: $('newExpiration').value,
-        quantity: quantity,
+        quantity: qty,
         supplier: $('newSupplier').value,
         location: $('newLocation').value,
         notes: $('newNotes').value,
@@ -629,27 +619,24 @@ async function createBatch() {
       }
     });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
-    status(
-      result.message + ' Batch barcode: ' + result.batchBarcode
-    );
-
+    status(r.message + ' Batch barcode: ' + r.batchBarcode);
     await findItem(currentItem.item.barcode);
-  } catch (error) {
-    status(error.message);
+  } catch (e) {
+    status(e.message);
   }
 }
 
-/* ================= SAVE ITEM PROFILE ================= */
+/* ---------- Item profile ---------- */
 
 async function saveProfile() {
   if (!currentItem) return;
 
   try {
-    const result = await api('profileSave', {
+    const r = await api('profileSave', {
       token: token,
       request: {
         itemId: currentItem.item.id,
@@ -662,18 +649,18 @@ async function saveProfile() {
       }
     });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
-    status(result.message);
+    status(r.message);
     await findItem(currentItem.item.barcode);
-  } catch (error) {
-    status(error.message);
+  } catch (e) {
+    status(e.message);
   }
 }
 
-/* ================= CAMERA SCANNER ================= */
+/* ---------- Camera scanner ---------- */
 
 async function startCamera() {
   try {
@@ -681,29 +668,29 @@ async function startCamera() {
       scanner = new Html5Qrcode('reader');
     }
 
-    const cameras = await Html5Qrcode.getCameras();
+    const cams = await Html5Qrcode.getCameras();
 
-    if (!cameras.length) {
+    if (!cams.length) {
       throw new Error('No camera was found.');
     }
 
     await scanner.start(
-      cameras[0].id,
+      cams[0].id,
       {
         fps: 10,
         qrbox: { width: 250, height: 180 }
       },
-      function(decodedText) {
+      function(txt) {
         stopCamera();
-        $('barcode').value = decodedText;
-        findItem(decodedText);
+        $('barcode').value = txt;
+        findItem(txt);
       },
       function() {}
     );
 
     status('Camera scanning.');
-  } catch (error) {
-    status('Camera error: ' + error.message);
+  } catch (e) {
+    status('Camera error: ' + e.message);
   }
 }
 
@@ -713,51 +700,68 @@ async function stopCamera() {
       if (scanner.isScanning) {
         await scanner.stop();
       }
-    } catch (error) {}
+    } catch (e) {}
 
     try {
       await scanner.clear();
-    } catch (error) {}
+    } catch (e) {}
   }
 }
 
-/* ================= OWNER USER MANAGEMENT ================= */
+/* ---------- Owner user management ---------- */
 
 async function loadUsers() {
   try {
-    const result = await api('usersList', {
-      token: token
-    });
+    const r = await api('usersList', { token: token });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
     $('usersList').innerHTML = '';
 
-    result.users.forEach(function(user) {
-      const div = document.createElement('div');
-      div.className = 'batch';
+    r.users.forEach(function(u) {
+      const d = document.createElement('div');
+      d.className = 'batch';
 
-      div.innerHTML =
-        '<b>' + esc(user.displayName) + '</b> — ' +
-        esc(user.email) +
-        '<br>Role: ' + esc(user.role) +
-        ' | ' + (user.active ? 'Active' : 'Inactive') +
+      d.innerHTML =
+        '<b>' + esc(u.displayName) + '</b> — ' +
+        esc(u.email) + '<br>' +
+        'Role: ' + esc(u.role) + ' | ' +
+        (u.active ? 'Active' : 'Inactive') +
         '<br><button class="secondary" type="button">Edit this account</button>';
 
-      div.querySelector('button').onclick = function() {
-        editUser(user);
+      d.querySelector('button').onclick = function() {
+        editUser(u);
       };
 
-      $('usersList').appendChild(div);
+      $('usersList').appendChild(d);
     });
-  } catch (error) {
-    status(error.message);
+  } catch (e) {
+    status(e.message);
   }
 }
 
 let editingUserEmail = '';
+
+function editUser(u) {
+  editingUserEmail = u.email;
+
+  $('uEmail').value = u.email;
+  $('uEmail').disabled = true;
+
+  $('uName').value = u.displayName;
+  $('uPin').value = '';
+  $('uActive').checked = u.active;
+
+  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
+    const el = $('perm_' + k);
+
+    if (el) {
+      el.checked = !!u.permissions[k];
+    }
+  });
+}
 
 const PERMISSION_COLUMNS_JS = {
   scan: 'Can scan / look up items',
@@ -767,46 +771,26 @@ const PERMISSION_COLUMNS_JS = {
   editProfiles: 'Edit item profiles'
 };
 
-function editUser(user) {
-  editingUserEmail = user.email;
-
-  $('uEmail').value = user.email;
-  $('uEmail').disabled = true;
-  $('uName').value = user.displayName;
-  $('uPin').value = '';
-  $('uActive').checked = user.active;
-
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(key) {
-    const element = $('perm_' + key);
-
-    if (element) {
-      element.checked = !!user.permissions[key];
-    }
-  });
-}
-
 $('permissionInputs').innerHTML =
   Object.entries(PERMISSION_COLUMNS_JS).map(function(entry) {
-    const key = entry[0];
-    const label = entry[1];
+    const k = entry[0];
+    const v = entry[1];
 
-    return (
-      '<label class="checkline">' +
-      '<input type="checkbox" id="perm_' + key + '">' +
-      ' ' + label +
-      '</label>'
-    );
+    return '<label class="checkline">' +
+      '<input type="checkbox" id="perm_' + k + '"> ' +
+      v +
+      '</label>';
   }).join('');
 
 async function saveUser() {
   const permissions = {};
 
-  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(key) {
-    permissions[key] = $('perm_' + key).checked;
+  Object.keys(PERMISSION_COLUMNS_JS).forEach(function(k) {
+    permissions[k] = $('perm_' + k).checked;
   });
 
   try {
-    const result = await api('userSave', {
+    const r = await api('userSave', {
       token: token,
       request: {
         email: $('uEmail').value,
@@ -817,28 +801,29 @@ async function saveUser() {
       }
     });
 
-    if (!result.success) {
-      throw new Error(result.message);
+    if (!r.success) {
+      throw new Error(r.message);
     }
 
-    status(result.message);
+    status(r.message);
 
     editingUserEmail = '';
+
     $('uEmail').disabled = false;
     $('uEmail').value = '';
     $('uName').value = '';
     $('uPin').value = '';
 
     loadUsers();
-  } catch (error) {
-    status(error.message);
+  } catch (e) {
+    status(e.message);
   }
 }
 
-/* ================= STARTUP ================= */
+/* ---------- Startup ---------- */
 
-$('pin').addEventListener('keydown', function(event) {
-  if (event.key === 'Enter') {
+$('pin').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
     login();
   }
 });
