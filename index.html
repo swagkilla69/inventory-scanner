@@ -52,6 +52,13 @@
     .receive-button { background: #e5f5e9; }
     .remove-button { background: #fff0f0; }
     .small-note { font-size: 13px; color: #555; }
+    .success-notice {
+      border: 1px solid #16803c;
+      background: #edf9f0;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 12px 0;
+    }
   </style>
 </head>
 <body>
@@ -403,6 +410,9 @@
         renderTransactionPanel(results);
       }
 
+      // New batches can be created even when the item has no existing batches.
+      renderNewBatchPanel(results);
+
       if (result.profile) {
         addHeading(results, 'Item Profile', 'h3');
         addField(results, 'Uses', result.profile.uses);
@@ -518,6 +528,137 @@
       parent.appendChild(panel);
     }
 
+    function localDateString() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+
+      return year + '-' + month + '-' + day;
+    }
+
+    function renderNewBatchPanel(parent) {
+      const panel = document.createElement('section');
+      panel.className = 'panel';
+
+      addHeading(panel, 'Create New Batch', 'h3');
+
+      const description = document.createElement('p');
+      description.className = 'small-note';
+      description.textContent =
+        'Use this when receiving a new lot or shipment of an existing item. The starting quantity will be added to inventory automatically.';
+      panel.appendChild(description);
+
+      function addInputField(labelText, id, type, placeholder, required) {
+        const label = document.createElement('label');
+        label.htmlFor = id;
+        label.textContent = labelText;
+
+        const input = document.createElement('input');
+        input.id = id;
+        input.type = type;
+        input.placeholder = placeholder || '';
+        input.required = required === true;
+
+        if (type === 'number') {
+          input.min = '1';
+          input.step = '1';
+        }
+
+        panel.appendChild(label);
+        panel.appendChild(input);
+
+        return input;
+      }
+
+      addInputField(
+        'Lot / batch number (required)',
+        'newBatchLot',
+        'text',
+        'Enter the manufacturer lot number',
+        true
+      );
+
+      const receivedInput = addInputField(
+        'Date received',
+        'newBatchReceived',
+        'date',
+        '',
+        true
+      );
+      receivedInput.value = localDateString();
+
+      addInputField(
+        'Expiration date (optional)',
+        'newBatchExpiration',
+        'date',
+        '',
+        false
+      );
+
+      addInputField(
+        'Starting quantity received (required)',
+        'newBatchQuantity',
+        'number',
+        'Enter quantity received',
+        true
+      );
+
+      addInputField(
+        'Supplier',
+        'newBatchSupplier',
+        'text',
+        'Supplier name',
+        false
+      );
+
+      const locationInput = addInputField(
+        'Storage location',
+        'newBatchLocation',
+        'text',
+        'Storage location',
+        false
+      );
+      locationInput.value = currentItem && currentItem.location
+        ? String(currentItem.location) : '';
+
+      const notesLabel = document.createElement('label');
+      notesLabel.htmlFor = 'newBatchNotes';
+      notesLabel.textContent = 'Batch notes';
+      panel.appendChild(notesLabel);
+
+      const notesInput = document.createElement('textarea');
+      notesInput.id = 'newBatchNotes';
+      notesInput.placeholder = 'Optional notes about this batch';
+      panel.appendChild(notesInput);
+
+      const reasonLabel = document.createElement('label');
+      reasonLabel.htmlFor = 'newBatchReason';
+      reasonLabel.textContent = 'Receiving reason / reference';
+      panel.appendChild(reasonLabel);
+
+      const reasonInput = document.createElement('textarea');
+      reasonInput.id = 'newBatchReason';
+      reasonInput.placeholder =
+        'Optional: purchase order, delivery reference, or other reason';
+      panel.appendChild(reasonInput);
+
+      const note = document.createElement('p');
+      note.className = 'small-note';
+      note.textContent =
+        'A unique batch ID and batch barcode will be generated automatically. The initial quantity will also be recorded as a Receive transaction.';
+      panel.appendChild(note);
+
+      const submitButton = document.createElement('button');
+      submitButton.id = 'newBatchButton';
+      submitButton.type = 'button';
+      submitButton.textContent = 'Create New Batch';
+      submitButton.onclick = submitNewBatch;
+      panel.appendChild(submitButton);
+
+      parent.appendChild(panel);
+    }
+
     function createRequestId() {
       const bytes = new Uint8Array(16);
       crypto.getRandomValues(bytes);
@@ -614,7 +755,6 @@
         document.getElementById('transactionQuantity').value = '';
         document.getElementById('transactionReason').value = '';
 
-        // Re-read the item from the server. This does not change stock.
         const refreshed = await apiRequest('lookup', {
           token: sessionToken,
           barcode: currentLookupBarcode
@@ -639,6 +779,163 @@
 
         const refreshedButton =
           document.getElementById('transactionButton');
+
+        if (refreshedButton) {
+          refreshedButton.disabled = false;
+        }
+      }
+    }
+
+    async function submitNewBatch() {
+      const status = document.getElementById('status');
+      const button = document.getElementById('newBatchButton');
+
+      if (!sessionToken) {
+        status.textContent = 'Your session has expired. Please log in again.';
+        clearSession();
+        showLogin();
+        return;
+      }
+
+      if (!currentItem || !currentItem.id) {
+        status.textContent = 'Look up an item before creating a batch.';
+        return;
+      }
+
+      if (transactionInProgress || lookupInProgress) return;
+
+      const lot = document.getElementById('newBatchLot').value.trim();
+      const receivedDate =
+        document.getElementById('newBatchReceived').value;
+      const expirationDate =
+        document.getElementById('newBatchExpiration').value;
+      const quantity = Number(
+        document.getElementById('newBatchQuantity').value
+      );
+      const supplier =
+        document.getElementById('newBatchSupplier').value.trim();
+      const location =
+        document.getElementById('newBatchLocation').value.trim();
+      const notes =
+        document.getElementById('newBatchNotes').value.trim();
+      const reason =
+        document.getElementById('newBatchReason').value.trim();
+
+      if (!lot) {
+        status.textContent = 'Enter the lot or batch number.';
+        return;
+      }
+
+      if (!receivedDate) {
+        status.textContent = 'Enter the date received.';
+        return;
+      }
+
+      if (expirationDate && expirationDate < receivedDate) {
+        status.textContent =
+          'The expiration date cannot be earlier than the received date.';
+        return;
+      }
+
+      if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+        status.textContent =
+          'Enter a whole-number starting quantity greater than zero.';
+        return;
+      }
+
+      const confirmation =
+        'Create a new batch for ' + (currentItem.name || currentItem.id) +
+        '?\n\n' +
+        'Lot: ' + lot + '\n' +
+        'Received: ' + receivedDate + '\n' +
+        'Quantity: ' + quantity + '\n\n' +
+        'This will add the starting quantity to inventory and record a Receive transaction.';
+
+      if (!window.confirm(confirmation)) return;
+
+      transactionInProgress = true;
+      button.disabled = true;
+      status.textContent = 'Creating new batch…';
+
+      let creationConfirmed = false;
+      let createdBatchId = '';
+      let createdBarcode = '';
+
+      try {
+        const result = await apiRequest('newBatch', {
+          token: sessionToken,
+          request: {
+            itemId: currentItem.id,
+            lot: lot,
+            receivedDate: receivedDate,
+            expirationDate: expirationDate,
+            quantity: quantity,
+            supplier: supplier,
+            location: location,
+            notes: notes,
+            reason: reason,
+            requestId: createRequestId()
+          }
+        });
+
+        if (!result || !result.success) {
+          status.textContent = result && result.message
+            ? result.message
+            : 'The new batch could not be created.';
+          return;
+        }
+
+        creationConfirmed = true;
+        createdBatchId = result.batchId ||
+          (result.batch && result.batch.id) || '';
+        createdBarcode = result.barcode ||
+          (result.batch && result.batch.barcode) || '';
+
+        status.textContent =
+          'New batch created. Refreshing inventory…';
+
+        const refreshed = await apiRequest('lookup', {
+          token: sessionToken,
+          barcode: currentLookupBarcode
+        });
+
+        if (refreshed && refreshed.success) {
+          renderItem(refreshed);
+
+          const notice = document.createElement('div');
+          notice.className = 'success-notice';
+
+          addHeading(notice, 'New Batch Created', 'h3');
+          addField(notice, 'Batch ID', createdBatchId);
+          addField(notice, 'Batch barcode', createdBarcode);
+          addField(notice, 'Lot number', lot);
+          addField(notice, 'Starting quantity', quantity);
+          addField(notice, 'Received date', receivedDate);
+
+          document.getElementById('results').prepend(notice);
+
+          status.textContent =
+            'New batch created successfully. Inventory updated.';
+        } else {
+          status.textContent =
+            'The new batch was created, but the item display could not refresh. Look up the item again to verify the new batch.';
+        }
+
+      } catch (error) {
+        if (creationConfirmed) {
+          status.textContent =
+            'The new batch was created, but the inventory display could not refresh. Look up the item again.';
+        } else {
+          status.textContent =
+            'The batch creation response could not be confirmed: ' +
+            error.message +
+            '\n\nDo not submit it again yet. Look up the item and check its batches and transaction log first.';
+        }
+      } finally {
+        transactionInProgress = false;
+
+        const refreshedButton =
+          document.getElementById('newBatchButton');
 
         if (refreshedButton) {
           refreshedButton.disabled = false;
