@@ -9,7 +9,7 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 500px;
+      max-width: 560px;
       margin: 24px auto;
       padding: 16px;
       line-height: 1.4;
@@ -17,8 +17,8 @@
     input, button, select, textarea {
       box-sizing: border-box;
       width: 100%;
-      padding: 14px;
-      margin: 8px 0;
+      padding: 13px;
+      margin: 7px 0;
       font-size: 16px;
     }
     button { cursor: pointer; }
@@ -26,47 +26,43 @@
     textarea { min-height: 75px; resize: vertical; }
     #status { white-space: pre-wrap; }
     #results { margin-top: 20px; overflow-wrap: anywhere; }
-    .batch {
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      padding: 12px;
-      margin: 10px 0;
-    }
-    .selected-batch {
-      border: 3px solid #16803c;
-      background: #edf9f0;
-    }
-    .selected-label {
-      color: #12652e;
-      font-weight: bold;
-    }
-    .warning { color: #b00020; font-weight: bold; }
-    .field { margin: 8px 0; }
-    .panel {
+    .panel, .batch, .user-card {
       border: 1px solid #ccc;
       border-radius: 8px;
       padding: 14px;
       margin: 14px 0;
     }
-    .hidden { display: none; }
-    .receive-button { background: #e5f5e9; }
-    .remove-button { background: #fff0f0; }
+    .selected-batch { border: 3px solid #16803c; background: #edf9f0; }
+    .selected-label { color: #12652e; font-weight: bold; }
+    .warning { color: #b00020; font-weight: bold; }
+    .field { margin: 8px 0; }
+    .hidden { display: none !important; }
     .small-note { font-size: 13px; color: #555; }
-    .success-notice {
-      border: 1px solid #16803c;
-      background: #edf9f0;
-      border-radius: 8px;
-      padding: 12px;
-      margin: 12px 0;
+    .success-notice { border: 1px solid #16803c; background: #edf9f0; border-radius: 8px; padding: 12px; margin: 12px 0; }
+    .permission-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
     }
+    .permission-row label { flex: 1; }
+    .permission-row input { width: 24px; height: 24px; margin: 0; }
+    .user-card h4 { margin-top: 0; overflow-wrap: anywhere; }
+    .button-secondary { background: #eee; }
+    .danger { color: #a00000; }
   </style>
 </head>
 <body>
   <h2>Inventory Scanner</h2>
 
   <section id="loginPanel" class="panel">
-    <h3>Owner Login</h3>
-    <label for="pin">Enter your four-digit PIN</label>
+    <h3>Account Login</h3>
+    <label for="loginEmail">Email address</label>
+    <input id="loginEmail" type="email" autocomplete="username"
+      placeholder="Your account email">
+    <label for="pin">Four-digit PIN</label>
     <input id="pin" type="password" inputmode="numeric"
       autocomplete="current-password" maxlength="4" pattern="[0-9]{4}"
       placeholder="Four-digit PIN">
@@ -76,17 +72,73 @@
   <section id="appPanel" class="hidden">
     <div class="panel">
       <div id="userLabel">Logged in</div>
+      <div id="roleLabel" class="small-note"></div>
       <button id="logoutButton" type="button" onclick="logout()">Log Out</button>
     </div>
 
-    <label for="barcode">Enter barcode manually</label>
-    <input id="barcode" autocomplete="off" placeholder="Scan or type barcode">
-    <button id="findButton" onclick="openItem()">Find Item</button>
-    <button id="cameraButton" onclick="startScanner()">Open Camera Scanner</button>
-    <button onclick="stopScanner()">Stop Camera</button>
+    <section id="userManagementPanel" class="panel hidden">
+      <h3>User Management</h3>
+      <p class="small-note">
+        Only the Owner can manage accounts. Each user's permissions are independent.
+        New accounts have all permissions disabled until you enable them.
+      </p>
+      <button type="button" onclick="loadUsers()">Refresh User List</button>
+      <div id="usersList">Loading accounts…</div>
 
-    <div id="reader"></div>
-    <div id="results"></div>
+      <hr>
+      <h3 id="userFormTitle">Add User Account</h3>
+      <label for="userName">Display name</label>
+      <input id="userName" placeholder="Friend's name">
+
+      <label for="userEmail">Email address</label>
+      <input id="userEmail" type="email" placeholder="friend@example.com">
+
+      <label for="userPin">Four-digit PIN</label>
+      <input id="userPin" type="password" inputmode="numeric"
+        maxlength="4" placeholder="Required for new account; optional to reset">
+
+      <div class="permission-row">
+        <label for="userActive">Account active</label>
+        <input id="userActive" type="checkbox" checked>
+      </div>
+      <div class="permission-row">
+        <label for="permScan">Can scan and look up items</label>
+        <input id="permScan" type="checkbox">
+      </div>
+      <div class="permission-row">
+        <label for="permReceive">Can receive stock</label>
+        <input id="permReceive" type="checkbox">
+      </div>
+      <div class="permission-row">
+        <label for="permRemove">Can remove stock</label>
+        <input id="permRemove" type="checkbox">
+      </div>
+      <div class="permission-row">
+        <label for="permBatches">Can create new batches</label>
+        <input id="permBatches" type="checkbox">
+      </div>
+      <div class="permission-row">
+        <label for="permProfiles">Can edit item profiles</label>
+        <input id="permProfiles" type="checkbox">
+      </div>
+
+      <button id="saveUserButton" type="button" onclick="saveUser()">Save User</button>
+      <button type="button" class="button-secondary" onclick="resetUserForm()">Clear Form</button>
+      <p class="small-note">
+        Resetting a user's PIN signs that account out of its existing session.
+        Leaving the PIN blank keeps its current PIN.
+      </p>
+    </section>
+
+    <section id="scannerPanel">
+      <label for="barcode">Enter barcode manually</label>
+      <input id="barcode" autocomplete="off" placeholder="Scan or type barcode">
+      <button id="findButton" onclick="openItem()">Find Item</button>
+      <button id="cameraButton" onclick="startScanner()">Open Camera Scanner</button>
+      <button type="button" onclick="stopScanner()">Stop Camera</button>
+      <div id="reader"></div>
+      <div id="results"></div>
+    </section>
   </section>
 
   <p id="status">Please log in.</p>
@@ -102,10 +154,12 @@
     let requestInProgress = false;
     let transactionInProgress = false;
     let sessionToken = null;
-
+    let currentUser = null;
+    let currentPermissions = {};
     let currentItem = null;
     let currentBatches = [];
     let currentLookupBarcode = '';
+    let editingUserEmail = '';
 
     function apiRequest(action, data) {
       return new Promise(function(resolve, reject) {
@@ -115,10 +169,8 @@
         }
 
         requestInProgress = true;
-
         const nonceBytes = new Uint8Array(16);
         crypto.getRandomValues(nonceBytes);
-
         const nonce = Array.from(nonceBytes)
           .map(b => b.toString(16).padStart(2, '0')).join('');
 
@@ -170,8 +222,10 @@
         }
 
         function onMessage(event) {
-          const message = event.data;
+          if (event.origin !== 'https://script.google.com' &&
+              event.origin !== 'https://script.googleusercontent.com') return;
 
+          const message = event.data;
           if (!message || message.nonce !== nonce || !message.data) return;
 
           try {
@@ -185,7 +239,6 @@
         }
 
         window.addEventListener('message', onMessage);
-
         timeout = setTimeout(function() {
           finish(new Error(
             'The server did not respond. Check the Apps Script deployment.'
@@ -201,13 +254,19 @@
     }
 
     async function login() {
+      const emailInput = document.getElementById('loginEmail');
       const pinInput = document.getElementById('pin');
-      const pin = pinInput.value.trim();
       const status = document.getElementById('status');
       const button = document.getElementById('loginButton');
+      const email = emailInput.value.trim().toLowerCase();
+      const pin = pinInput.value.trim();
 
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        status.textContent = 'Enter your account email address.';
+        return;
+      }
       if (!/^\d{4}$/.test(pin)) {
-        status.textContent = 'Enter exactly four digits.';
+        status.textContent = 'Enter exactly four PIN digits.';
         return;
       }
 
@@ -215,7 +274,7 @@
       status.textContent = 'Logging in…';
 
       try {
-        const result = await apiRequest('login', { pin: pin });
+        const result = await apiRequest('login', { email, pin });
         pinInput.value = '';
 
         if (!result || !result.success || !result.token) {
@@ -225,8 +284,14 @@
         }
 
         sessionToken = result.token;
+        currentUser = {
+          email: email,
+          displayName: result.displayName || email,
+          role: result.role || 'User'
+        };
+        currentPermissions = result.permissions || {};
         sessionStorage.setItem(SESSION_KEY, sessionToken);
-        showApp(result.displayName || 'Owner');
+        showApp();
         status.textContent = 'Login successful.';
 
       } catch (error) {
@@ -242,27 +307,44 @@
 
       try {
         const result = await apiRequest('validate', { token: savedToken });
-
         if (!result || !result.success) {
           clearSession();
           return false;
         }
 
         sessionToken = savedToken;
-        showApp(result.displayName || 'Owner');
+        currentUser = {
+          email: result.email || '',
+          displayName: result.displayName || 'User',
+          role: result.role || 'User'
+        };
+        currentPermissions = result.permissions || {};
+        showApp();
         return true;
-
       } catch (error) {
         clearSession();
         return false;
       }
     }
 
-    function showApp(displayName) {
+    function showApp() {
       document.getElementById('loginPanel').classList.add('hidden');
       document.getElementById('appPanel').classList.remove('hidden');
-      document.getElementById('userLabel').textContent =
-        'Logged in as ' + displayName;
+
+      const name = currentUser ? currentUser.displayName : 'User';
+      const role = currentUser ? currentUser.role : 'User';
+
+      document.getElementById('userLabel').textContent = 'Logged in as ' + name;
+      document.getElementById('roleLabel').textContent = 'Account type: ' + role;
+
+      const isOwner = String(role).toLowerCase() === 'owner';
+      document.getElementById('userManagementPanel')
+        .classList.toggle('hidden', !isOwner);
+
+      if (isOwner) loadUsers();
+
+      document.getElementById('scannerPanel')
+        .classList.toggle('hidden', currentPermissions.scan !== true);
     }
 
     function showLogin() {
@@ -274,28 +356,28 @@
       currentItem = null;
       currentBatches = [];
       currentLookupBarcode = '';
+      currentUser = null;
+      currentPermissions = {};
     }
 
     function clearSession() {
       sessionToken = null;
+      currentUser = null;
+      currentPermissions = {};
       sessionStorage.removeItem(SESSION_KEY);
     }
 
     async function logout() {
       await stopScanner();
-
       const token = sessionToken;
       clearSession();
       showLogin();
 
       if (token) {
         try {
-          await apiRequest('logout', { token: token });
-        } catch (error) {
-          // Local session has already been cleared.
-        }
+          await apiRequest('logout', { token });
+        } catch (error) {}
       }
-
       document.getElementById('status').textContent = 'Logged out.';
     }
 
@@ -309,12 +391,14 @@
         showLogin();
         return;
       }
-
+      if (currentPermissions.scan !== true) {
+        status.textContent = 'Your account cannot scan or look up items.';
+        return;
+      }
       if (!barcode) {
         status.textContent = 'Enter or scan a barcode first.';
         return;
       }
-
       if (lookupInProgress || transactionInProgress) return;
 
       lookupInProgress = true;
@@ -325,7 +409,7 @@
       try {
         const result = await apiRequest('lookup', {
           token: sessionToken,
-          barcode: barcode
+          barcode
         });
 
         if (!result || !result.success) {
@@ -334,7 +418,6 @@
             clearSession();
             showLogin();
           }
-
           status.textContent = result && result.message
             ? result.message : 'Lookup failed.';
           return;
@@ -342,7 +425,6 @@
 
         currentLookupBarcode = barcode;
         renderItem(result);
-
       } catch (error) {
         status.textContent = error.message;
       } finally {
@@ -354,7 +436,6 @@
     function renderItem(result) {
       const status = document.getElementById('status');
       const results = document.getElementById('results');
-
       results.replaceChildren();
 
       status.textContent = result.scannedType === 'batch'
@@ -370,6 +451,7 @@
       addField(results, 'Item barcode', item.barcode);
       addField(results, 'Category', item.category);
       addField(results, 'Manufacturer', item.manufacturer);
+      addField(results, 'Date entered', item.dateEntered);
       addField(results, 'On hand (total)', item.onHand);
       addField(results, 'Unit', item.unit);
       addField(results, 'Reorder level', item.reorderLevel);
@@ -388,7 +470,6 @@
 
           if (batch.selected === true) {
             card.classList.add('selected-batch');
-
             const label = document.createElement('p');
             label.className = 'selected-label';
             label.textContent = '✓ SCANNED BATCH';
@@ -403,39 +484,26 @@
           addField(card, 'Quantity in this batch', batch.quantity);
           addField(card, 'Status', batch.status);
           addField(card, 'Notes', batch.notes);
-
           results.appendChild(card);
         });
+      }
 
+      if (currentBatches.length &&
+          (currentPermissions.receive === true ||
+           currentPermissions.remove === true)) {
         renderTransactionPanel(results);
       }
 
-      // New batches can be created even when the item has no existing batches.
-      renderNewBatchPanel(results);
-
-      if (result.profile) {
-        addHeading(results, 'Item Profile', 'h3');
-        addField(results, 'Uses', result.profile.uses);
-        addField(results, 'Warnings', result.profile.warnings);
-        addField(results, 'Instructions', result.profile.instructions);
-        addField(results, 'Special handling', result.profile.handling);
-        addField(results, 'Profile notes', result.profile.notes);
-
-        if (result.profile.photoUrl) {
-          const link = document.createElement('a');
-          link.href = result.profile.photoUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = 'Open item photo';
-          results.appendChild(link);
-        }
+      if (currentPermissions.createBatches === true) {
+        renderNewBatchPanel(results);
       }
+
+      renderProfile(results, result.profile || {});
     }
 
     function renderTransactionPanel(parent) {
       const panel = document.createElement('section');
       panel.className = 'panel';
-
       addHeading(panel, 'Manage Stock', 'h3');
 
       const batchLabel = document.createElement('label');
@@ -450,22 +518,13 @@
       currentBatches.forEach(function(batch) {
         const option = document.createElement('option');
         option.value = batch.id;
-
-        const expiration = batch.expiration
-          ? ' | Expires: ' + batch.expiration : '';
-        const quantity = batch.quantity !== undefined
-          ? ' | Quantity: ' + batch.quantity : '';
-
         option.textContent =
-          (batch.id || 'Unnamed batch') + expiration + quantity;
-
-        if (batch.selected === true) {
-          option.selected = true;
-        }
-
+          (batch.id || 'Unnamed batch') +
+          (batch.expiration ? ' | Expires: ' + batch.expiration : '') +
+          (batch.quantity !== undefined ? ' | Quantity: ' + batch.quantity : '');
+        if (batch.selected === true) option.selected = true;
         batchSelect.appendChild(option);
       });
-
       panel.appendChild(batchSelect);
 
       const typeLabel = document.createElement('label');
@@ -476,16 +535,18 @@
       const typeSelect = document.createElement('select');
       typeSelect.id = 'transactionType';
 
-      const receiveOption = document.createElement('option');
-      receiveOption.value = 'Receive';
-      receiveOption.textContent = 'Receive stock';
-
-      const removeOption = document.createElement('option');
-      removeOption.value = 'Remove';
-      removeOption.textContent = 'Remove stock';
-
-      typeSelect.appendChild(receiveOption);
-      typeSelect.appendChild(removeOption);
+      if (currentPermissions.receive === true) {
+        const option = document.createElement('option');
+        option.value = 'Receive';
+        option.textContent = 'Receive stock';
+        typeSelect.appendChild(option);
+      }
+      if (currentPermissions.remove === true) {
+        const option = document.createElement('option');
+        option.value = 'Remove';
+        option.textContent = 'Remove stock';
+        typeSelect.appendChild(option);
+      }
       panel.appendChild(typeSelect);
 
       const quantityLabel = document.createElement('label');
@@ -514,8 +575,7 @@
 
       const note = document.createElement('p');
       note.className = 'small-note';
-      note.textContent =
-        'Every transaction applies to the selected batch only.';
+      note.textContent = 'Every transaction applies to the selected batch only.';
       panel.appendChild(note);
 
       const submitButton = document.createElement('button');
@@ -530,23 +590,20 @@
 
     function localDateString() {
       const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-
-      return year + '-' + month + '-' + day;
+      return now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
     }
 
     function renderNewBatchPanel(parent) {
       const panel = document.createElement('section');
       panel.className = 'panel';
-
       addHeading(panel, 'Create New Batch', 'h3');
 
       const description = document.createElement('p');
       description.className = 'small-note';
       description.textContent =
-        'Use this when receiving a new lot or shipment of an existing item. The starting quantity will be added to inventory automatically.';
+        'Create a new lot or shipment for this existing inventory item.';
       panel.appendChild(description);
 
       function addInputField(labelText, id, type, placeholder, required) {
@@ -564,109 +621,160 @@
           input.min = '1';
           input.step = '1';
         }
-
         panel.appendChild(label);
         panel.appendChild(input);
-
         return input;
       }
 
-      addInputField(
-        'Lot / batch number (required)',
-        'newBatchLot',
-        'text',
-        'Enter the manufacturer lot number',
-        true
-      );
+      addInputField('Lot / batch number (required)', 'newBatchLot',
+        'text', 'Manufacturer lot number', true);
 
-      const receivedInput = addInputField(
-        'Date received',
-        'newBatchReceived',
-        'date',
-        '',
-        true
-      );
-      receivedInput.value = localDateString();
+      const received = addInputField('Date received', 'newBatchReceived',
+        'date', '', true);
+      received.value = localDateString();
 
-      addInputField(
-        'Expiration date (optional)',
-        'newBatchExpiration',
-        'date',
-        '',
-        false
-      );
+      addInputField('Expiration date (optional)', 'newBatchExpiration',
+        'date', '', false);
 
-      addInputField(
-        'Starting quantity received (required)',
-        'newBatchQuantity',
-        'number',
-        'Enter quantity received',
-        true
-      );
+      addInputField('Starting quantity received', 'newBatchQuantity',
+        'number', 'Quantity received', true);
 
-      addInputField(
-        'Supplier',
-        'newBatchSupplier',
-        'text',
-        'Supplier name',
-        false
-      );
+      addInputField('Supplier', 'newBatchSupplier', 'text',
+        'Supplier name', false);
 
-      const locationInput = addInputField(
-        'Storage location',
-        'newBatchLocation',
-        'text',
-        'Storage location',
-        false
-      );
-      locationInput.value = currentItem && currentItem.location
+      const location = addInputField('Storage location', 'newBatchLocation',
+        'text', 'Storage location', false);
+      location.value = currentItem && currentItem.location
         ? String(currentItem.location) : '';
 
-      const notesLabel = document.createElement('label');
-      notesLabel.htmlFor = 'newBatchNotes';
-      notesLabel.textContent = 'Batch notes';
-      panel.appendChild(notesLabel);
-
-      const notesInput = document.createElement('textarea');
-      notesInput.id = 'newBatchNotes';
-      notesInput.placeholder = 'Optional notes about this batch';
-      panel.appendChild(notesInput);
-
-      const reasonLabel = document.createElement('label');
-      reasonLabel.htmlFor = 'newBatchReason';
-      reasonLabel.textContent = 'Receiving reason / reference';
-      panel.appendChild(reasonLabel);
-
-      const reasonInput = document.createElement('textarea');
-      reasonInput.id = 'newBatchReason';
-      reasonInput.placeholder =
-        'Optional: purchase order, delivery reference, or other reason';
-      panel.appendChild(reasonInput);
+      addLabeledTextarea(panel, 'Batch notes', 'newBatchNotes',
+        'Optional notes about this batch');
+      addLabeledTextarea(panel, 'Receiving reason / reference', 'newBatchReason',
+        'Purchase order, delivery reference, or reason');
 
       const note = document.createElement('p');
       note.className = 'small-note';
       note.textContent =
-        'A unique batch ID and batch barcode will be generated automatically. The initial quantity will also be recorded as a Receive transaction.';
+        'A unique batch ID and barcode will be generated. The initial quantity is recorded as a Receive transaction.';
       panel.appendChild(note);
 
-      const submitButton = document.createElement('button');
-      submitButton.id = 'newBatchButton';
-      submitButton.type = 'button';
-      submitButton.textContent = 'Create New Batch';
-      submitButton.onclick = submitNewBatch;
-      panel.appendChild(submitButton);
+      const button = document.createElement('button');
+      button.id = 'newBatchButton';
+      button.type = 'button';
+      button.textContent = 'Create New Batch';
+      button.onclick = submitNewBatch;
+      panel.appendChild(button);
 
       parent.appendChild(panel);
+    }
+
+    function addLabeledTextarea(parent, labelText, id, placeholder) {
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.textContent = labelText;
+      parent.appendChild(label);
+
+      const input = document.createElement('textarea');
+      input.id = id;
+      input.placeholder = placeholder || '';
+      parent.appendChild(input);
+      return input;
+    }
+
+    function renderProfile(parent, profile) {
+      addHeading(parent, 'Item Profile', 'h3');
+
+      if (currentPermissions.editProfiles === true) {
+        const panel = document.createElement('section');
+        panel.className = 'panel';
+        addHeading(panel, 'Edit Item Profile', 'h4');
+
+        addLabeledTextarea(panel, 'Uses', 'profileUses', 'Uses');
+        addLabeledTextarea(panel, 'Warnings', 'profileWarnings', 'Warnings and contraindications');
+        addLabeledTextarea(panel, 'Instructions', 'profileInstructions', 'Instructions');
+        addLabeledTextarea(panel, 'Special handling', 'profileHandling', 'Special handling');
+        addLabeledTextarea(panel, 'Profile notes', 'profileNotes', 'Additional notes');
+
+        const photoLabel = document.createElement('label');
+        photoLabel.htmlFor = 'profilePhoto';
+        photoLabel.textContent = 'Photo URL';
+        panel.appendChild(photoLabel);
+
+        const photo = document.createElement('input');
+        photo.id = 'profilePhoto';
+        photo.type = 'url';
+        photo.placeholder = 'https://…';
+        panel.appendChild(photo);
+
+        document.getElementById('results').appendChild(panel);
+
+        document.getElementById('profileUses').value = profile.uses || '';
+        document.getElementById('profileWarnings').value = profile.warnings || '';
+        document.getElementById('profileInstructions').value = profile.instructions || '';
+        document.getElementById('profileHandling').value = profile.handling || '';
+        document.getElementById('profileNotes').value = profile.notes || '';
+        document.getElementById('profilePhoto').value = profile.photoUrl || '';
+
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.id = 'saveProfileButton';
+        save.textContent = 'Save Item Profile';
+        save.onclick = saveProfile;
+        panel.appendChild(save);
+      } else {
+        addField(parent, 'Uses', profile.uses);
+        addField(parent, 'Warnings', profile.warnings);
+        addField(parent, 'Instructions', profile.instructions);
+        addField(parent, 'Special handling', profile.handling);
+        addField(parent, 'Profile notes', profile.notes);
+
+        if (profile.photoUrl) {
+          const link = document.createElement('a');
+          link.href = profile.photoUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Open item photo';
+          parent.appendChild(link);
+        }
+      }
+    }
+
+    async function saveProfile() {
+      if (!currentItem || !currentItem.id) return;
+
+      const button = document.getElementById('saveProfileButton');
+      button.disabled = true;
+      document.getElementById('status').textContent = 'Saving item profile…';
+
+      try {
+        const result = await apiRequest('profileSave', {
+          token: sessionToken,
+          request: {
+            itemId: currentItem.id,
+            uses: document.getElementById('profileUses').value,
+            warnings: document.getElementById('profileWarnings').value,
+            instructions: document.getElementById('profileInstructions').value,
+            handling: document.getElementById('profileHandling').value,
+            notes: document.getElementById('profileNotes').value,
+            photoUrl: document.getElementById('profilePhoto').value.trim()
+          }
+        });
+
+        document.getElementById('status').textContent =
+          result && result.success ? result.message :
+          (result && result.message ? result.message : 'Profile save failed.');
+      } catch (error) {
+        document.getElementById('status').textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
     }
 
     function createRequestId() {
       const bytes = new Uint8Array(16);
       crypto.getRandomValues(bytes);
-
       return Array.from(bytes)
-        .map(function(byte) {
-          return byte.toString(16).padStart(2, '0');
-        }).join('');
+        .map(byte => byte.toString(16).padStart(2, '0')).join('');
     }
 
     async function submitTransaction() {
@@ -675,47 +783,41 @@
 
       if (!sessionToken) {
         status.textContent = 'Your session has expired. Please log in again.';
+        clearSession();
         showLogin();
         return;
       }
-
       if (!currentItem || !currentItem.id) {
         status.textContent = 'Look up an item before recording stock.';
         return;
       }
-
       if (transactionInProgress || lookupInProgress) return;
 
       const batchId = document.getElementById('transactionBatch').value;
       const type = document.getElementById('transactionType').value;
-      const quantity = Number(
-        document.getElementById('transactionQuantity').value
-      );
+      const quantity = Number(document.getElementById('transactionQuantity').value);
       const reason = document.getElementById('transactionReason').value.trim();
 
       if (!batchId) {
         status.textContent = 'Select a batch first.';
         return;
       }
-
       if (!Number.isSafeInteger(quantity) || quantity <= 0) {
         status.textContent = 'Enter a whole-number quantity greater than zero.';
         return;
       }
 
-      const selectedBatch = currentBatches.find(function(batch) {
-        return String(batch.id) === String(batchId);
-      });
+      const selectedBatch = currentBatches.find(batch =>
+        String(batch.id) === String(batchId)
+      );
 
       if (!selectedBatch) {
         status.textContent = 'The selected batch could not be found.';
         return;
       }
 
-      if (type === 'Remove' &&
-          quantity > Number(selectedBatch.quantity)) {
-        status.textContent =
-          'You cannot remove more than the selected batch contains.';
+      if (type === 'Remove' && quantity > Number(selectedBatch.quantity)) {
+        status.textContent = 'You cannot remove more than the selected batch contains.';
         return;
       }
 
@@ -734,10 +836,10 @@
           token: sessionToken,
           request: {
             itemId: currentItem.id,
-            batchId: batchId,
-            type: type,
-            quantity: quantity,
-            reason: reason,
+            batchId,
+            type,
+            quantity,
+            reason,
             requestId: createRequestId()
           }
         });
@@ -745,15 +847,13 @@
         if (!result || !result.success) {
           status.textContent = result && result.message
             ? result.message
-            : 'Transaction failed. Check the inventory before trying again.';
+            : 'Transaction failed. Check inventory before trying again.';
           return;
         }
 
-        status.textContent =
-          'Transaction recorded. Refreshing inventory…';
-
         document.getElementById('transactionQuantity').value = '';
         document.getElementById('transactionReason').value = '';
+        status.textContent = 'Transaction recorded. Refreshing inventory…';
 
         const refreshed = await apiRequest('lookup', {
           token: sessionToken,
@@ -762,27 +862,19 @@
 
         if (refreshed && refreshed.success) {
           renderItem(refreshed);
-          status.textContent =
-            'Transaction recorded successfully. Inventory updated.';
+          status.textContent = 'Transaction recorded successfully. Inventory updated.';
         } else {
           status.textContent =
-            'Transaction was recorded, but the inventory display could not refresh. Look up the item again before making another transaction.';
+            'Transaction was recorded, but the display could not refresh. Look up the item again before another transaction.';
         }
-
       } catch (error) {
         status.textContent =
-          'The transaction response could not be confirmed: ' +
-          error.message +
+          'The transaction response could not be confirmed: ' + error.message +
           ' Check the batch quantity and transaction log before retrying.';
       } finally {
         transactionInProgress = false;
-
-        const refreshedButton =
-          document.getElementById('transactionButton');
-
-        if (refreshedButton) {
-          refreshedButton.disabled = false;
-        }
+        const refreshedButton = document.getElementById('transactionButton');
+        if (refreshedButton) refreshedButton.disabled = false;
       }
     }
 
@@ -790,66 +882,43 @@
       const status = document.getElementById('status');
       const button = document.getElementById('newBatchButton');
 
-      if (!sessionToken) {
-        status.textContent = 'Your session has expired. Please log in again.';
-        clearSession();
-        showLogin();
+      if (!sessionToken || !currentItem || !currentItem.id) {
+        status.textContent = 'Log in and look up an item first.';
         return;
       }
-
-      if (!currentItem || !currentItem.id) {
-        status.textContent = 'Look up an item before creating a batch.';
-        return;
-      }
-
       if (transactionInProgress || lookupInProgress) return;
 
       const lot = document.getElementById('newBatchLot').value.trim();
-      const receivedDate =
-        document.getElementById('newBatchReceived').value;
-      const expirationDate =
-        document.getElementById('newBatchExpiration').value;
-      const quantity = Number(
-        document.getElementById('newBatchQuantity').value
-      );
-      const supplier =
-        document.getElementById('newBatchSupplier').value.trim();
-      const location =
-        document.getElementById('newBatchLocation').value.trim();
-      const notes =
-        document.getElementById('newBatchNotes').value.trim();
-      const reason =
-        document.getElementById('newBatchReason').value.trim();
+      const receivedDate = document.getElementById('newBatchReceived').value;
+      const expirationDate = document.getElementById('newBatchExpiration').value;
+      const quantity = Number(document.getElementById('newBatchQuantity').value);
+      const supplier = document.getElementById('newBatchSupplier').value.trim();
+      const location = document.getElementById('newBatchLocation').value.trim();
+      const notes = document.getElementById('newBatchNotes').value.trim();
+      const reason = document.getElementById('newBatchReason').value.trim();
 
       if (!lot) {
         status.textContent = 'Enter the lot or batch number.';
         return;
       }
-
       if (!receivedDate) {
         status.textContent = 'Enter the date received.';
         return;
       }
-
       if (expirationDate && expirationDate < receivedDate) {
-        status.textContent =
-          'The expiration date cannot be earlier than the received date.';
+        status.textContent = 'Expiration date cannot be earlier than received date.';
         return;
       }
-
       if (!Number.isSafeInteger(quantity) || quantity <= 0) {
-        status.textContent =
-          'Enter a whole-number starting quantity greater than zero.';
+        status.textContent = 'Enter a whole-number starting quantity greater than zero.';
         return;
       }
 
       const confirmation =
         'Create a new batch for ' + (currentItem.name || currentItem.id) +
-        '?\n\n' +
-        'Lot: ' + lot + '\n' +
-        'Received: ' + receivedDate + '\n' +
-        'Quantity: ' + quantity + '\n\n' +
-        'This will add the starting quantity to inventory and record a Receive transaction.';
+        '?\n\nLot: ' + lot + '\nReceived: ' + receivedDate +
+        '\nQuantity: ' + quantity +
+        '\n\nThis adds the starting quantity and records a Receive transaction.';
 
       if (!window.confirm(confirmation)) return;
 
@@ -866,33 +935,27 @@
           token: sessionToken,
           request: {
             itemId: currentItem.id,
-            lot: lot,
-            receivedDate: receivedDate,
-            expirationDate: expirationDate,
-            quantity: quantity,
-            supplier: supplier,
-            location: location,
-            notes: notes,
-            reason: reason,
+            lot,
+            receivedDate,
+            expirationDate,
+            quantity,
+            supplier,
+            location,
+            notes,
+            reason,
             requestId: createRequestId()
           }
         });
 
         if (!result || !result.success) {
           status.textContent = result && result.message
-            ? result.message
-            : 'The new batch could not be created.';
+            ? result.message : 'The new batch could not be created.';
           return;
         }
 
         creationConfirmed = true;
-        createdBatchId = result.batchId ||
-          (result.batch && result.batch.id) || '';
-        createdBarcode = result.barcode ||
-          (result.batch && result.batch.barcode) || '';
-
-        status.textContent =
-          'New batch created. Refreshing inventory…';
+        createdBatchId = result.batchId || '';
+        createdBarcode = result.barcode || result.batchBarcode || '';
 
         const refreshed = await apiRequest('lookup', {
           token: sessionToken,
@@ -904,42 +967,181 @@
 
           const notice = document.createElement('div');
           notice.className = 'success-notice';
-
           addHeading(notice, 'New Batch Created', 'h3');
           addField(notice, 'Batch ID', createdBatchId);
           addField(notice, 'Batch barcode', createdBarcode);
           addField(notice, 'Lot number', lot);
           addField(notice, 'Starting quantity', quantity);
           addField(notice, 'Received date', receivedDate);
-
           document.getElementById('results').prepend(notice);
 
-          status.textContent =
-            'New batch created successfully. Inventory updated.';
+          status.textContent = 'New batch created successfully. Inventory updated.';
         } else {
           status.textContent =
-            'The new batch was created, but the item display could not refresh. Look up the item again to verify the new batch.';
+            'New batch created, but the display could not refresh. Look up the item again.';
         }
-
       } catch (error) {
-        if (creationConfirmed) {
-          status.textContent =
-            'The new batch was created, but the inventory display could not refresh. Look up the item again.';
-        } else {
-          status.textContent =
-            'The batch creation response could not be confirmed: ' +
+        status.textContent = creationConfirmed
+          ? 'New batch created, but the display could not refresh. Look up the item again.'
+          : 'The batch creation response could not be confirmed: ' +
             error.message +
-            '\n\nDo not submit it again yet. Look up the item and check its batches and transaction log first.';
-        }
+            '\n\nDo not submit it again yet. Check the item batches and transaction log first.';
       } finally {
         transactionInProgress = false;
+        const refreshedButton = document.getElementById('newBatchButton');
+        if (refreshedButton) refreshedButton.disabled = false;
+      }
+    }
 
-        const refreshedButton =
-          document.getElementById('newBatchButton');
+    /* ========================================================
+       OWNER USER MANAGEMENT
+       ======================================================== */
 
-        if (refreshedButton) {
-          refreshedButton.disabled = false;
+    async function loadUsers() {
+      const container = document.getElementById('usersList');
+      if (!container || !sessionToken) return;
+
+      container.textContent = 'Loading accounts…';
+
+      try {
+        const result = await apiRequest('usersList', { token: sessionToken });
+
+        if (!result || !result.success) {
+          container.textContent = result && result.message
+            ? result.message : 'Could not load users.';
+          return;
         }
+
+        container.replaceChildren();
+
+        if (!result.users || result.users.length === 0) {
+          container.textContent = 'No user accounts found.';
+          return;
+        }
+
+        result.users.forEach(function(user) {
+          const card = document.createElement('div');
+          card.className = 'user-card';
+
+          const heading = document.createElement('h4');
+          heading.textContent = user.displayName + ' — ' + user.role;
+          card.appendChild(heading);
+
+          const email = document.createElement('p');
+          email.textContent = user.email;
+          card.appendChild(email);
+
+          const active = document.createElement('p');
+          active.textContent = user.active ? 'Account active' : 'Account inactive';
+          active.className = user.active ? '' : 'warning';
+          card.appendChild(active);
+
+          const edit = document.createElement('button');
+          edit.type = 'button';
+          edit.textContent = 'Edit permissions / reset PIN';
+          edit.onclick = function() { editUser(user); };
+          card.appendChild(edit);
+
+          container.appendChild(card);
+        });
+      } catch (error) {
+        container.textContent = error.message;
+      }
+    }
+
+    function editUser(user) {
+      editingUserEmail = user.email;
+      document.getElementById('userFormTitle').textContent =
+        'Edit User: ' + user.displayName;
+      document.getElementById('userName').value = user.displayName || '';
+      document.getElementById('userEmail').value = user.email || '';
+      document.getElementById('userEmail').disabled = true;
+      document.getElementById('userPin').value = '';
+      document.getElementById('userPin').placeholder =
+        'Leave blank to keep current PIN';
+      document.getElementById('userActive').checked = user.active === true;
+
+      const p = user.permissions || {};
+      document.getElementById('permScan').checked = p.scan === true;
+      document.getElementById('permReceive').checked = p.receive === true;
+      document.getElementById('permRemove').checked = p.remove === true;
+      document.getElementById('permBatches').checked = p.createBatches === true;
+      document.getElementById('permProfiles').checked = p.editProfiles === true;
+
+      document.getElementById('userManagementPanel')
+        .scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function resetUserForm() {
+      editingUserEmail = '';
+      document.getElementById('userFormTitle').textContent = 'Add User Account';
+      document.getElementById('userName').value = '';
+      document.getElementById('userEmail').value = '';
+      document.getElementById('userEmail').disabled = false;
+      document.getElementById('userPin').value = '';
+      document.getElementById('userPin').placeholder =
+        'Required for new account; optional to reset';
+      document.getElementById('userActive').checked = true;
+      document.getElementById('permScan').checked = false;
+      document.getElementById('permReceive').checked = false;
+      document.getElementById('permRemove').checked = false;
+      document.getElementById('permBatches').checked = false;
+      document.getElementById('permProfiles').checked = false;
+    }
+
+    async function saveUser() {
+      const button = document.getElementById('saveUserButton');
+      const status = document.getElementById('status');
+
+      const request = {
+        email: document.getElementById('userEmail').value.trim(),
+        displayName: document.getElementById('userName').value.trim(),
+        pin: document.getElementById('userPin').value.trim(),
+        active: document.getElementById('userActive').checked,
+        permissions: {
+          scan: document.getElementById('permScan').checked,
+          receive: document.getElementById('permReceive').checked,
+          remove: document.getElementById('permRemove').checked,
+          createBatches: document.getElementById('permBatches').checked,
+          editProfiles: document.getElementById('permProfiles').checked
+        }
+      };
+
+      if (!request.email || !request.displayName) {
+        status.textContent = 'Enter the user's email and display name.';
+        return;
+      }
+      if (!editingUserEmail && !/^\d{4}$/.test(request.pin)) {
+        status.textContent = 'A new account requires a four-digit PIN.';
+        return;
+      }
+      if (request.pin && !/^\d{4}$/.test(request.pin)) {
+        status.textContent = 'PIN must contain exactly four digits.';
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = 'Saving user account…';
+
+      try {
+        const result = await apiRequest('userSave', {
+          token: sessionToken,
+          request
+        });
+
+        if (!result || !result.success) {
+          status.textContent = result && result.message
+            ? result.message : 'Could not save user.';
+          return;
+        }
+
+        status.textContent = result.message;
+        resetUserForm();
+        await loadUsers();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
       }
     }
 
@@ -957,7 +1159,6 @@
 
       const strong = document.createElement('strong');
       strong.textContent = label + ': ';
-
       element.appendChild(strong);
       element.appendChild(document.createTextNode(String(value)));
       parent.appendChild(element);
@@ -971,13 +1172,14 @@
         showLogin();
         return;
       }
-
-      if (typeof Html5Qrcode === 'undefined') {
-        status.textContent =
-          'Scanner library did not load. Refresh and try again.';
+      if (currentPermissions.scan !== true) {
+        status.textContent = 'Your account cannot scan or look up items.';
         return;
       }
-
+      if (typeof Html5Qrcode === 'undefined') {
+        status.textContent = 'Scanner library did not load. Refresh and try again.';
+        return;
+      }
       if (scanner) {
         status.textContent = 'Camera scanner is already running.';
         return;
@@ -992,7 +1194,6 @@
           { fps: 10, qrbox: { width: 250, height: 150 } },
           async function(decodedText) {
             if (lookupInProgress || transactionInProgress) return;
-
             document.getElementById('barcode').value = decodedText;
             await stopScanner();
             openItem();
@@ -1001,7 +1202,6 @@
         );
 
         status.textContent = 'Camera running. Point it at a barcode.';
-
       } catch (error) {
         status.textContent =
           'Camera could not start: ' + (error.message || String(error));
@@ -1011,31 +1211,22 @@
 
     async function stopScanner() {
       if (scanner) {
-        const currentScannerInstance = scanner;
+        const instance = scanner;
         scanner = null;
-
         try {
-          if (currentScannerInstance.isScanning) {
-            await currentScannerInstance.stop();
-          }
-          currentScannerInstance.clear();
+          if (instance.isScanning) await instance.stop();
+          instance.clear();
         } catch (error) {}
       }
     }
 
-    document.getElementById('barcode').addEventListener(
-      'keydown',
-      function(event) {
-        if (event.key === 'Enter') openItem();
-      }
-    );
+    document.getElementById('barcode').addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') openItem();
+    });
 
-    document.getElementById('pin').addEventListener(
-      'keydown',
-      function(event) {
-        if (event.key === 'Enter') login();
-      }
-    );
+    document.getElementById('pin').addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') login();
+    });
 
     window.addEventListener('load', async function() {
       await validateSession();
