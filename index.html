@@ -263,6 +263,8 @@ let cameraStopping = false;
 let scanHandled = false;
 let busy = false;
 
+/* ---------- General helpers ---------- */
+
 function showStatus(message) {
   $('status').textContent = String(message || '');
 }
@@ -275,13 +277,23 @@ function makeId() {
 
 function escapeHtml(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
-    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
   })[c]);
 }
 
 function safePhoto(value) {
   const s = String(value || '').trim();
   return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : '';
+}
+
+function normalizeBarcode(value) {
+  return String(value == null ? '' : value)
+    .trim()
+    .toUpperCase();
 }
 
 /* ---------- API communication: Apps Script JSONP ---------- */
@@ -299,10 +311,18 @@ function api(action, data = {}) {
 
     function finish(error, result) {
       if (complete) return;
+
       complete = true;
       clearTimeout(timeout);
-      try { delete window[callback]; } catch(e) { window[callback] = undefined; }
+
+      try {
+        delete window[callback];
+      } catch(e) {
+        window[callback] = undefined;
+      }
+
       script.remove();
+
       if (error) reject(error);
       else resolve(result);
     }
@@ -312,6 +332,7 @@ function api(action, data = {}) {
         finish(new Error('Invalid server response.'));
         return;
       }
+
       finish(null, response.result);
     };
 
@@ -340,6 +361,7 @@ async function login() {
   if (busy) return;
 
   const pin = $('pin').value.trim();
+
   if (!/^\d{4}$/.test(pin)) {
     showStatus('Enter your four-digit PIN.');
     return;
@@ -350,17 +372,25 @@ async function login() {
 
   try {
     showStatus('Signing in…');
+
     const r = await api('login', {pin: pin});
 
-    if (!r || !r.success) throw new Error(r?.message || 'Login failed.');
-    if (!r.token) throw new Error('The server did not return a session token.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Login failed.');
+    }
+
+    if (!r.token) {
+      throw new Error('The server did not return a session token.');
+    }
 
     token = r.token;
     sessionStorage.setItem('inventory_session', token);
+
     currentUser = r;
     permissions = r.permissions || {};
 
     $('pin').value = '';
+
     openApp();
     showStatus('Signed in successfully.');
 
@@ -380,18 +410,23 @@ async function restoreSession() {
 
   try {
     showStatus('Checking session…');
+
     const r = await api('validate', {token: token});
 
-    if (!r || !r.success) throw new Error(r?.message || 'Session expired.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Session expired.');
+    }
 
     currentUser = r;
     permissions = r.permissions || {};
+
     openApp();
     showStatus('Session restored.');
 
   } catch(e) {
     token = '';
     sessionStorage.removeItem('inventory_session');
+
     showLogin();
     showStatus(e.message || 'Please log in.');
   }
@@ -411,17 +446,28 @@ function openApp() {
 
   $('startCameraButton').disabled = !permissions.scan;
 
-  $('newProductPanel').classList.toggle('hidden', !permissions.createProducts);
+  $('newProductPanel').classList.toggle(
+    'hidden',
+    !permissions.createProducts
+  );
+
   $('newBatchPanel').classList.add('hidden');
   $('profilePanel').classList.add('hidden');
   $('stockPanel').classList.add('hidden');
-  $('usersPanel').classList.toggle('hidden', !permissions.manageUsers);
 
-  if (permissions.manageUsers) loadUsers();
+  $('usersPanel').classList.toggle(
+    'hidden',
+    !permissions.manageUsers
+  );
+
+  if (permissions.manageUsers) {
+    loadUsers();
+  }
 }
 
 async function logout() {
   const oldToken = token;
+
   await stopCamera();
 
   token = '';
@@ -430,20 +476,26 @@ async function logout() {
   permissions = {};
 
   sessionStorage.removeItem('inventory_session');
+
   $('itemPanel').classList.add('hidden');
+
   showLogin();
 
   if (oldToken) {
-    try { await api('logout', {token: oldToken}); } catch(e) {}
+    try {
+      await api('logout', {token: oldToken});
+    } catch(e) {}
   }
 
   showStatus('Logged out.');
 }
 
-/* ---------- Barcode lookup and batch display ---------- */
+/* ---------- Barcode lookup ---------- */
 
 async function findItem(value) {
-  const barcode = String(value || $('barcode').value).trim();
+  const barcode = String(
+    value == null ? $('barcode').value : value
+  ).trim();
 
   if (!barcode) {
     showStatus('Enter a barcode.');
@@ -463,9 +515,20 @@ async function findItem(value) {
       token: token
     });
 
-    if (!r || !r.success) throw new Error(r?.message || 'Item not found.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Item not found.');
+    }
+
+    /*
+     * IMPORTANT BATCH HIGHLIGHTING FIX:
+     * Save the exact barcode scanned by the user.
+     * displayBatches() uses it as a fallback to identify
+     * the matching batch even if selectedBatchId is missing.
+     */
+    r.scannedBarcode = barcode;
 
     displayItem(r);
+
     showStatus(
       r.scannedType === 'batch'
         ? 'Batch barcode found. The matching batch is highlighted.'
@@ -477,17 +540,21 @@ async function findItem(value) {
   }
 }
 
+/* ---------- Display product ---------- */
+
 function displayItem(r) {
   currentItem = r;
 
   $('itemPanel').classList.remove('hidden');
+
   $('itemName').textContent = r.item.name || 'Unnamed product';
 
   $('itemDetails').innerHTML =
     '<p><b>Item ID:</b> ' + escapeHtml(r.item.id) + '<br>' +
     '<b>Product barcode:</b> ' + escapeHtml(r.item.barcode) + '<br>' +
     '<b>Date entered:</b> ' + escapeHtml(r.item.dateEntered) + '<br>' +
-    '<b>On hand:</b> ' + escapeHtml(r.item.onHand) + ' ' + escapeHtml(r.item.unit || '') + '<br>' +
+    '<b>On hand:</b> ' + escapeHtml(r.item.onHand) + ' ' +
+    escapeHtml(r.item.unit || '') + '<br>' +
     '<b>Category:</b> ' + escapeHtml(r.item.category || '') + '<br>' +
     '<b>Manufacturer:</b> ' + escapeHtml(r.item.manufacturer || '') + '<br>' +
     '<b>Location:</b> ' + escapeHtml(r.item.location || '') + '<br>' +
@@ -497,7 +564,9 @@ function displayItem(r) {
   const photo = safePhoto(p.photoUrl);
 
   $('profileView').innerHTML =
-    (photo ? '<img src="' + escapeHtml(photo) + '" alt="Product photo"><br>' : '') +
+    (photo
+      ? '<img src="' + escapeHtml(photo) + '" alt="Product photo"><br>'
+      : '') +
     '<b>Uses:</b> ' + escapeHtml(p.uses || '') + '<br>' +
     '<b>Warnings:</b> ' + escapeHtml(p.warnings || '') + '<br>' +
     '<b>Instructions:</b> ' + escapeHtml(p.instructions || '') + '<br>' +
@@ -507,11 +576,19 @@ function displayItem(r) {
   displayBatches(r);
 
   $('stockPanel').classList.toggle(
-    'hidden', !(permissions.receive || permissions.remove)
+    'hidden',
+    !(permissions.receive || permissions.remove)
   );
 
-  $('newBatchPanel').classList.toggle('hidden', !permissions.createBatches);
-  $('profilePanel').classList.toggle('hidden', !permissions.editProfiles);
+  $('newBatchPanel').classList.toggle(
+    'hidden',
+    !permissions.createBatches
+  );
+
+  $('profilePanel').classList.toggle(
+    'hidden',
+    !permissions.editProfiles
+  );
 
   $('pUses').value = p.uses || '';
   $('pWarnings').value = p.warnings || '';
@@ -524,24 +601,65 @@ function displayItem(r) {
   $('newLocation').value = r.item.location || '';
 }
 
+/* ---------- Display batches and highlight scanned batch ---------- */
+
 function displayBatches(r) {
   $('batches').innerHTML = '';
   $('batchSelect').innerHTML = '';
 
+  const batches = r.batches || [];
+
+  /*
+   * Find the selected batch using either:
+   * 1. The backend's selectedBatchId.
+   * 2. The backend's b.selected property.
+   * 3. A direct comparison against the scanned barcode.
+   */
+
+  const scannedBarcode = normalizeBarcode(r.scannedBarcode);
+
+  let matchedBatchId = r.selectedBatchId || '';
+
+  if (!matchedBatchId && scannedBarcode) {
+    const barcodeMatch = batches.find(b =>
+      normalizeBarcode(b.barcode) === scannedBarcode
+    );
+
+    if (barcodeMatch) {
+      matchedBatchId = barcodeMatch.id;
+    }
+  }
+
   const placeholder = new Option('Choose a batch…', '');
-  placeholder.selected = !r.selectedBatchId;
+  placeholder.selected = !matchedBatchId;
+
   $('batchSelect').add(placeholder);
 
-  (r.batches || []).forEach(b => {
+  batches.forEach(b => {
+    const batchBarcode = normalizeBarcode(b.barcode);
+
     const selected =
       b.selected === true ||
-      (r.selectedBatchId && String(b.id) === String(r.selectedBatchId));
+      (
+        matchedBatchId &&
+        String(b.id).trim() === String(matchedBatchId).trim()
+      ) ||
+      (
+        scannedBarcode &&
+        batchBarcode &&
+        batchBarcode === scannedBarcode
+      );
 
     const card = document.createElement('div');
-    card.className = selected ? 'batch selected-batch' : 'batch';
+
+    card.className = selected
+      ? 'batch selected-batch'
+      : 'batch';
 
     card.innerHTML =
-      (selected ? '<div class="selected-label">✓ SCANNED BATCH</div>' : '') +
+      (selected
+        ? '<div class="selected-label">✓ SCANNED BATCH</div>'
+        : '') +
       '<b>' + escapeHtml(b.lot || b.id) + '</b><br>' +
       '<b>Batch ID:</b> ' + escapeHtml(b.id) + '<br>' +
       '<b>Barcode:</b> ' + escapeHtml(b.barcode || '') + '<br>' +
@@ -559,11 +677,16 @@ function displayBatches(r) {
     );
 
     option.selected = !!selected;
+
     $('batchSelect').add(option);
+
+    if (selected) {
+      matchedBatchId = b.id;
+    }
   });
 
-  if (r.selectedBatchId) {
-    $('batchSelect').value = String(r.selectedBatchId);
+  if (matchedBatchId) {
+    $('batchSelect').value = String(matchedBatchId);
   }
 }
 
@@ -586,6 +709,16 @@ async function submitTransaction() {
     return;
   }
 
+  if (type === 'Receive' && !permissions.receive) {
+    showStatus('Your account cannot receive stock.');
+    return;
+  }
+
+  if (type === 'Remove' && !permissions.remove) {
+    showStatus('Your account cannot remove stock.');
+    return;
+  }
+
   try {
     showStatus('Recording transaction…');
 
@@ -601,15 +734,21 @@ async function submitTransaction() {
       }
     });
 
-    if (!r || !r.success) throw new Error(r?.message || 'Transaction failed.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Transaction failed.');
+    }
 
-    const barcode = $('barcode').value.trim() || currentItem.item.barcode;
+    const barcode =
+      $('barcode').value.trim() || currentItem.item.barcode;
+
     $('txnQty').value = '';
     $('txnReason').value = '';
 
     showStatus(r.message || 'Transaction recorded.');
 
-    if (barcode) await findItem(barcode);
+    if (barcode) {
+      await findItem(barcode);
+    }
 
   } catch(e) {
     showStatus(e.message || 'Transaction failed.');
@@ -620,6 +759,11 @@ async function submitTransaction() {
 
 async function createBatch() {
   if (!currentItem) return;
+
+  if (!permissions.createBatches) {
+    showStatus('Your account cannot create batches.');
+    return;
+  }
 
   const quantity = Number($('newQuantity').value);
   const lot = $('newLot').value.trim();
@@ -652,7 +796,9 @@ async function createBatch() {
       }
     });
 
-    if (!r || !r.success) throw new Error(r?.message || 'Batch creation failed.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Batch creation failed.');
+    }
 
     showStatus(
       r.message + '\nNew batch barcode: ' + (r.batchBarcode || '')
@@ -664,7 +810,10 @@ async function createBatch() {
     $('newSupplier').value = '';
     $('newNotes').value = '';
 
-    // Look up the new batch barcode so it is highlighted immediately.
+    /*
+     * Look up the new batch barcode.
+     * The matching batch should be highlighted automatically.
+     */
     if (r.batchBarcode) {
       $('barcode').value = r.batchBarcode;
       await findItem(r.batchBarcode);
@@ -722,7 +871,9 @@ async function createProduct() {
       }
     });
 
-    if (!r || !r.success) throw new Error(r?.message || 'Product creation failed.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Product creation failed.');
+    }
 
     showStatus(
       r.message + '\nItem ID: ' + r.itemId +
@@ -730,10 +881,19 @@ async function createProduct() {
     );
 
     [
-      'productName','productBarcode','productCategory','productManufacturer',
-      'productUnit','productLocation','productNotes','productUses',
-      'productWarnings','productInstructions','productHandling',
-      'productProfileNotes','productPhoto'
+      'productName',
+      'productBarcode',
+      'productCategory',
+      'productManufacturer',
+      'productUnit',
+      'productLocation',
+      'productNotes',
+      'productUses',
+      'productWarnings',
+      'productInstructions',
+      'productHandling',
+      'productProfileNotes',
+      'productPhoto'
     ].forEach(id => $(id).value = '');
 
     $('productReorder').value = '0';
@@ -755,6 +915,11 @@ async function createProduct() {
 async function saveProfile() {
   if (!currentItem) return;
 
+  if (!permissions.editProfiles) {
+    showStatus('Your account cannot edit product profiles.');
+    return;
+  }
+
   try {
     showStatus('Saving profile…');
 
@@ -771,9 +936,12 @@ async function saveProfile() {
       }
     });
 
-    if (!r || !r.success) throw new Error(r?.message || 'Profile save failed.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Profile save failed.');
+    }
 
     showStatus(r.message || 'Profile saved.');
+
     await findItem(currentItem.item.barcode);
 
   } catch(e) {
@@ -797,7 +965,9 @@ async function getRearCameraId() {
       audio: false
     });
   } finally {
-    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
   }
 
   const cameras = (await navigator.mediaDevices.enumerateDevices())
@@ -845,6 +1015,7 @@ async function startCamera() {
     $('cameraHelp').classList.remove('hidden');
 
     showStatus('Finding the rear camera…');
+
     const rearId = await getRearCameraId();
 
     scanner = new Html5Qrcode('reader');
@@ -864,6 +1035,7 @@ async function startCamera() {
         if (scanHandled) return;
 
         const value = String(decodedText || '').trim();
+
         if (!value) return;
 
         scanHandled = true;
@@ -882,8 +1054,14 @@ async function startCamera() {
     showStatus('Camera error: ' + (e.message || String(e)));
 
     if (scanner) {
-      try { if (scanner.isScanning) await scanner.stop(); } catch(x) {}
-      try { await scanner.clear(); } catch(x) {}
+      try {
+        if (scanner.isScanning) await scanner.stop();
+      } catch(x) {}
+
+      try {
+        await scanner.clear();
+      } catch(x) {}
+
       scanner = null;
     }
 
@@ -903,8 +1081,14 @@ async function stopCamera() {
 
   try {
     if (scanner) {
-      try { if (scanner.isScanning) await scanner.stop(); } catch(e) {}
-      try { await scanner.clear(); } catch(e) {}
+      try {
+        if (scanner.isScanning) await scanner.stop();
+      } catch(e) {}
+
+      try {
+        await scanner.clear();
+      } catch(e) {}
+
       scanner = null;
     }
 
@@ -939,7 +1123,10 @@ let editingEmail = '';
 async function loadUsers() {
   try {
     const r = await api('usersList', {token: token});
-    if (!r || !r.success) throw new Error(r?.message || 'Could not load users.');
+
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Could not load users.');
+    }
 
     $('usersList').innerHTML = '';
 
@@ -948,6 +1135,7 @@ async function loadUsers() {
       card.className = 'batch';
 
       const info = document.createElement('div');
+
       info.innerHTML =
         '<b>' + escapeHtml(user.displayName) + '</b><br>' +
         escapeHtml(user.email) + '<br>' +
@@ -960,6 +1148,7 @@ async function loadUsers() {
       button.onclick = () => editUser(user);
 
       card.append(info, button);
+
       $('usersList').appendChild(card);
     });
 
@@ -985,6 +1174,7 @@ function editUser(user) {
 
 function clearUserForm() {
   editingEmail = '';
+
   $('uEmail').disabled = false;
   $('uEmail').value = '';
   $('uName').value = '';
@@ -997,6 +1187,11 @@ function clearUserForm() {
 }
 
 async function saveUser() {
+  if (!permissions.manageUsers) {
+    showStatus('You do not have permission to manage users.');
+    return;
+  }
+
   const perms = {};
 
   Object.keys(permissionLabels).forEach(key => {
@@ -1017,9 +1212,12 @@ async function saveUser() {
       }
     });
 
-    if (!r || !r.success) throw new Error(r?.message || 'Could not save user.');
+    if (!r || !r.success) {
+      throw new Error(r?.message || 'Could not save user.');
+    }
 
     showStatus(r.message || 'User saved.');
+
     clearUserForm();
     await loadUsers();
 
@@ -1043,8 +1241,11 @@ $('txnType').add(new Option('Remove stock', 'Remove'));
 
 $('txnType').addEventListener('change', () => {
   const type = $('txnType').value;
+
   $('txnQty').placeholder =
-    type === 'Remove' ? 'Quantity to remove' : 'Quantity to receive';
+    type === 'Remove'
+      ? 'Quantity to remove'
+      : 'Quantity to receive';
 });
 
 restoreSession();
